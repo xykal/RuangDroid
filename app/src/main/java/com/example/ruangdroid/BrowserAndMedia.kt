@@ -11,6 +11,7 @@ import android.graphics.Path
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.ToneGenerator
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -23,8 +24,6 @@ import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -45,7 +44,7 @@ object BrowserAndMedia {
     ): View {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(15, 23, 38))
+            setBackgroundColor(Color.rgb(13, 20, 34))
         }
 
         val webView: WebView = try {
@@ -53,8 +52,8 @@ object BrowserAndMedia {
         } catch (t: Throwable) {
             return UiKit.label(
                 context,
-                "Android System WebView tidak ditemukan di perangkat ini: ${t.message}",
-                13f,
+                "WebView sistem tidak ditemukan: ${t.message}",
+                12.5f,
                 UiKit.INK,
                 maxLines = 5
             ).apply { setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 16)) }
@@ -65,19 +64,19 @@ object BrowserAndMedia {
         val navBar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(context, 8), dp(context, 6), dp(context, 8), dp(context, 6))
-            setBackgroundColor(Color.rgb(20, 30, 48))
+            setPadding(dp(context, 8), dp(context, 5), dp(context, 8), dp(context, 5))
+            setBackgroundColor(Color.rgb(18, 28, 46))
         }
 
         val urlInput = EditText(context).apply {
-            hint = "Ketik alamat web atau kata kunci pencarian…"
+            hint = "Ketik URL atau kata kunci pencarian…"
             setHintTextColor(UiKit.MUTED)
             setTextColor(UiKit.INK)
-            textSize = 12.5f
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, UiKit.spPx(context, 12f))
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_GO
-            background = UiKit.rounded(context, Color.rgb(11, 17, 29), 10)
-            setPadding(dp(context, 12), 0, dp(context, 12), 0)
+            background = UiKit.rounded(context, Color.rgb(10, 15, 26), 9)
+            setPadding(dp(context, 10), 0, dp(context, 10), 0)
         }
 
         fun navigateTo(raw: String) {
@@ -92,57 +91,57 @@ object BrowserAndMedia {
             webView.loadUrl(finalUrl)
         }
 
-        navBar.addView(UiKit.chipButton(context, "◀") { if (webView.canGoBack()) webView.goBack() },
-            LinearLayout.LayoutParams(-2, dp(context, 30)).apply { rightMargin = dp(context, 4) })
-        navBar.addView(UiKit.chipButton(context, "▶") { if (webView.canGoForward()) webView.goForward() },
-            LinearLayout.LayoutParams(-2, dp(context, 30)).apply { rightMargin = dp(context, 4) })
-        navBar.addView(UiKit.chipButton(context, "🔄") { webView.reload() },
-            LinearLayout.LayoutParams(-2, dp(context, 30)).apply { rightMargin = dp(context, 6) })
+        navBar.addView(UiKit.chipButton(context, "<") { if (webView.canGoBack()) webView.goBack() },
+            LinearLayout.LayoutParams(-2, dp(context, 28)).apply { rightMargin = dp(context, 4) })
+        navBar.addView(UiKit.chipButton(context, ">") { if (webView.canGoForward()) webView.goForward() },
+            LinearLayout.LayoutParams(-2, dp(context, 28)).apply { rightMargin = dp(context, 4) })
+        navBar.addView(UiKit.chipButton(context, "Reload") { webView.reload() },
+            LinearLayout.LayoutParams(-2, dp(context, 28)).apply { rightMargin = dp(context, 5) })
 
-        navBar.addView(urlInput, LinearLayout.LayoutParams(0, dp(context, 32), 1f).apply { rightMargin = dp(context, 6) })
+        navBar.addView(urlInput, LinearLayout.LayoutParams(0, dp(context, 30), 1f).apply { rightMargin = dp(context, 5) })
 
-        navBar.addView(UiKit.chipButton(context, "Go", Color.argb(90, 37, 99, 235)) {
+        navBar.addView(UiKit.chipButton(context, "Go", Color.argb(110, 37, 99, 235)) {
             navigateTo(urlInput.text?.toString().orEmpty())
-        }, LinearLayout.LayoutParams(-2, dp(context, 30)).apply { rightMargin = dp(context, 4) })
+        }, LinearLayout.LayoutParams(-2, dp(context, 28)).apply { rightMargin = dp(context, 4) })
 
-        val uaBtn = UiKit.chipButton(context, "🖥️ PC") {}
+        val uaBtn = UiKit.chipButton(context, "PC") {}
         uaBtn.setOnClickListener {
             desktopMode = !desktopMode
-            uaBtn.text = if (desktopMode) "🖥️ PC" else "📱 HP"
+            uaBtn.text = if (desktopMode) "PC" else "Mobile"
             webView.settings.userAgentString = if (desktopMode) DESKTOP_UA else null
             webView.settings.useWideViewPort = desktopMode
             webView.reload()
         }
-        navBar.addView(uaBtn, LinearLayout.LayoutParams(-2, dp(context, 30)))
+        navBar.addView(uaBtn, LinearLayout.LayoutParams(-2, dp(context, 28)))
         root.addView(navBar, LinearLayout.LayoutParams(-1, -2))
 
-        // Bookmarks bar
         val bmScroll = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
-            setBackgroundColor(Color.rgb(16, 25, 42))
+            setBackgroundColor(Color.rgb(15, 23, 38))
             setPadding(dp(context, 8), dp(context, 3), dp(context, 8), dp(context, 4))
         }
         val bmRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val bookmarks = listOf(
-            "🔎 Google" to "https://www.google.com",
-            "▶️ YouTube" to "https://www.youtube.com",
-            "🐙 GitHub" to "https://github.com/xykal/RuangDroid",
-            "📚 Wikipedia" to "https://id.wikipedia.org",
-            "🦆 DuckDuckGo" to "https://duckduckgo.com"
+            "Google" to "https://www.google.com",
+            "YouTube" to "https://www.youtube.com",
+            "GitHub" to "https://github.com/xykal/RuangDroid",
+            "Shizuku" to "https://github.com/RikkaApps/Shizuku/releases",
+            "Winlator" to "https://github.com/brunodev85/winlator/releases"
         )
         for ((name, link) in bookmarks) {
-            bmRow.addView(UiKit.chipButton(context, name, Color.argb(28, 255, 255, 255)) {
+            bmRow.addView(UiKit.chipButton(context, name, Color.argb(26, 255, 255, 255)) {
                 navigateTo(link)
-            }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 6) })
+            }, LinearLayout.LayoutParams(-2, dp(context, 24)).apply { rightMargin = dp(context, 5) })
         }
         bmScroll.addView(bmRow)
         root.addView(bmScroll, LinearLayout.LayoutParams(-1, -2))
 
-        val progress = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
+        // Custom sleek progress line (zero stock Android ProgressBar!)
+        val progressLine = View(context).apply {
+            setBackgroundColor(Color.rgb(56, 189, 248))
             visibility = View.GONE
         }
-        root.addView(progress, LinearLayout.LayoutParams(-1, dp(context, 3)))
+        root.addView(progressLine, LinearLayout.LayoutParams(0, dp(context, 2)))
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -163,8 +162,14 @@ object BrowserAndMedia {
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                progress.progress = newProgress
-                progress.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
+                if (newProgress in 1..99) {
+                    progressLine.visibility = View.VISIBLE
+                    val lp = progressLine.layoutParams
+                    lp.width = ((root.width.coerceAtLeast(100)) * (newProgress / 100f)).toInt()
+                    progressLine.layoutParams = lp
+                } else {
+                    progressLine.visibility = View.GONE
+                }
             }
         }
 
@@ -174,9 +179,7 @@ object BrowserAndMedia {
             ) {
                 navigateTo(urlInput.text?.toString().orEmpty())
                 true
-            } else {
-                false
-            }
+            } else false
         }
 
         winState.onCloseCleanup = {
@@ -196,6 +199,7 @@ object BrowserAndMedia {
     @SuppressLint("ClickableViewAccessibility")
     fun buildPaintView(
         context: Context,
+        host: DesktopHostCallbacks,
         winState: DesktopWindowState,
         initialImage: File?
     ): View {
@@ -208,13 +212,11 @@ object BrowserAndMedia {
             try { BitmapFactory.decodeFile(it.absolutePath) } catch (_: Throwable) { null }
         }
 
-        if (initialImage != null) {
-            winState.titleView.text = "Paint Studio — ${initialImage.name}"
-        }
+        if (initialImage != null) winState.titleView.text = "Paint Studio — ${initialImage.name}"
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(15, 23, 38))
+            setBackgroundColor(Color.rgb(13, 20, 34))
             setPadding(dp(context, 8), dp(context, 6), dp(context, 8), dp(context, 8))
         }
 
@@ -229,8 +231,7 @@ object BrowserAndMedia {
             override fun onDraw(canvas: Canvas) {
                 canvas.drawColor(Color.rgb(248, 250, 252))
                 bgBitmap?.let { bmp ->
-                    val dst = android.graphics.Rect(0, 0, width, height)
-                    canvas.drawBitmap(bmp, null, dst, null)
+                    canvas.drawBitmap(bmp, null, android.graphics.Rect(0, 0, width, height), null)
                 }
                 for (s in strokes) {
                     paint.color = s.color
@@ -240,19 +241,17 @@ object BrowserAndMedia {
             }
 
             override fun onTouchEvent(event: MotionEvent): Boolean {
-                val x = event.x
-                val y = event.y
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         parent?.requestDisallowInterceptTouchEvent(true)
-                        val p = Path().apply { moveTo(x, y) }
+                        val p = Path().apply { moveTo(event.x, event.y) }
                         activePath = p
                         strokes.add(StrokeItem(p, currentColor, currentWidth))
                         invalidate()
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        activePath?.lineTo(x, y)
+                        activePath?.lineTo(event.x, event.y)
                         invalidate()
                         return true
                     }
@@ -283,50 +282,45 @@ object BrowserAndMedia {
         )
         for (c in palette) {
             val swatch = View(context).apply {
-                background = UiKit.strokeRounded(context, c, Color.WHITE, 12)
+                background = UiKit.strokeRounded(context, c, Color.WHITE, 11)
                 setOnClickListener { currentColor = c }
             }
-            toolBar.addView(swatch, LinearLayout.LayoutParams(dp(context, 24), dp(context, 24)).apply {
+            toolBar.addView(swatch, LinearLayout.LayoutParams(dp(context, 22), dp(context, 22)).apply {
                 rightMargin = dp(context, 5)
             })
         }
 
-        toolBar.addView(UiKit.chipButton(context, "🧽 Eraser") {
+        toolBar.addView(UiKit.chipButton(context, "Eraser") {
             currentColor = Color.rgb(248, 250, 252)
             currentWidth = dp(context, 16).toFloat()
-        }, LinearLayout.LayoutParams(-2, dp(context, 28)).apply { rightMargin = dp(context, 5) })
+        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
 
         toolBar.addView(UiKit.chipButton(context, "Tipis") { currentWidth = dp(context, 3).toFloat() },
-            LinearLayout.LayoutParams(-2, dp(context, 28)).apply { rightMargin = dp(context, 4) })
+            LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
         toolBar.addView(UiKit.chipButton(context, "Tebal") { currentWidth = dp(context, 9).toFloat() },
-            LinearLayout.LayoutParams(-2, dp(context, 28)).apply { rightMargin = dp(context, 5) })
+            LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
 
-        toolBar.addView(UiKit.chipButton(context, "↩ Undo") {
+        toolBar.addView(UiKit.chipButton(context, "Undo") {
             if (strokes.isNotEmpty()) {
                 strokes.removeAt(strokes.lastIndex)
                 canvasView.invalidate()
             }
-        }, LinearLayout.LayoutParams(-2, dp(context, 28)).apply { rightMargin = dp(context, 4) })
+        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
 
-        toolBar.addView(UiKit.chipButton(context, "🗑️ Clear") {
-            strokes.clear()
-            bgBitmap = null
-            canvasView.invalidate()
-        }, LinearLayout.LayoutParams(-2, dp(context, 28)).apply { rightMargin = dp(context, 5) })
+        toolBar.addView(UiKit.chipButton(context, "Clear") {
+            strokes.clear(); bgBitmap = null; canvasView.invalidate()
+        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
 
-        toolBar.addView(UiKit.chipButton(context, "💾 Simpan PNG", Color.argb(90, 37, 99, 235)) {
+        toolBar.addView(UiKit.chipButton(context, "Simpan PNG", Color.argb(100, 37, 99, 235)) {
             val w = canvasView.width.coerceAtLeast(320)
             val h = canvasView.height.coerceAtLeast(240)
             val outBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            val c = Canvas(outBmp)
-            canvasView.draw(c)
+            canvasView.draw(Canvas(outBmp))
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val outFile = File(VirtualDrive.picturesDir(context), "Lukisan_$stamp.png")
-            FileOutputStream(outFile).use { fos ->
-                outBmp.compress(Bitmap.CompressFormat.PNG, 100, fos)
-            }
-            Toast.makeText(context, "Disimpan di C:\\Users\\Administrator\\Pictures\\${outFile.name}", Toast.LENGTH_SHORT).show()
-        }, LinearLayout.LayoutParams(-2, dp(context, 28)))
+            FileOutputStream(outFile).use { outBmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            host.showToast("Paint Studio", "Tersimpan di Pictures\\${outFile.name}")
+        }, LinearLayout.LayoutParams(-2, dp(context, 26)))
 
         toolScroll.addView(toolBar)
         root.addView(toolScroll, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 6) })
@@ -341,114 +335,98 @@ object BrowserAndMedia {
         initialAudio: File?
     ): View {
         var player: MediaPlayer? = null
-        var currentTrackName = initialAudio?.name ?: "Belum ada file audio dipilih"
+        var currentTrackName = initialAudio?.name ?: "Tidak ada track dipilih"
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(Color.rgb(14, 20, 34))
-            setPadding(dp(context, 16), dp(context, 14), dp(context, 16), dp(context, 14))
+            setBackgroundColor(Color.rgb(12, 18, 32))
+            setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12))
         }
 
-        val titleTv = UiKit.label(context, "🎵 $currentTrackName", 14f, UiKit.INK, bold = true)
-        val stateTv = UiKit.label(context, "Siap memutar audio lokal (.mp3/.wav/.m4a) atau Synth Pad di bawah", 11.5f, UiKit.MUTED, maxLines = 2)
+        val titleTv = UiKit.label(context, currentTrackName, 13.5f, UiKit.INK, bold = true)
+        val stateTv = UiKit.label(context, "Pilih file audio atau mainkan PC Synth Pad di bawah", 11f, UiKit.MUTED, maxLines = 2)
 
         fun stopAndRelease() {
-            try {
-                player?.stop()
-            } catch (_: Throwable) {
-            }
-            try {
-                player?.release()
-            } catch (_: Throwable) {
-            }
+            try { player?.stop() } catch (_: Throwable) {}
+            try { player?.release() } catch (_: Throwable) {}
             player = null
         }
 
         fun loadAndPlay(file: File) {
             stopAndRelease()
             try {
-                val mp = MediaPlayer()
-                mp.setDataSource(file.absolutePath)
-                mp.prepare()
-                mp.start()
+                val mp = MediaPlayer().apply {
+                    setDataSource(file.absolutePath)
+                    prepare()
+                    start()
+                }
                 player = mp
                 currentTrackName = file.name
-                titleTv.text = "🎵 $currentTrackName"
-                stateTv.text = "▶ Sedang memutar (${mp.duration / 1000} detik)"
+                titleTv.text = currentTrackName
+                stateTv.text = "Memutar (${mp.duration / 1000} dtk)"
                 winState.titleView.text = "Media Player — ${file.name}"
-                mp.setOnCompletionListener {
-                    stateTv.text = "⏹ Selesai diputar"
-                }
+                mp.setOnCompletionListener { stateTv.text = "Selesai diputar" }
             } catch (t: Throwable) {
-                stateTv.text = "Gagal memutar file: ${t.message}"
+                stateTv.text = "Gagal memutar: ${t.message}"
             }
         }
 
         winState.onCloseCleanup = { stopAndRelease() }
 
-        root.addView(titleTv, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 4) })
-        root.addView(stateTv, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 12) })
+        root.addView(titleTv, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 3) })
+        root.addView(stateTv, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 10) })
 
         val controls = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        controls.addView(UiKit.chipButton(context, "📂 Pilih Audio HP", Color.argb(85, 37, 99, 235)) {
+        controls.addView(UiKit.chipButton(context, "Pilih Audio", Color.argb(95, 37, 99, 235)) {
             host.pickAudioFromStorage()
-        }, LinearLayout.LayoutParams(-2, dp(context, 34)).apply { rightMargin = dp(context, 8) })
+        }, LinearLayout.LayoutParams(-2, dp(context, 32)).apply { rightMargin = dp(context, 6) })
 
-        controls.addView(UiKit.chipButton(context, "⏯ Play/Pause") {
+        controls.addView(UiKit.chipButton(context, "Play / Pause") {
             val mp = player
             if (mp != null) {
-                if (mp.isPlaying) {
-                    mp.pause()
-                    stateTv.text = "⏸ Dijeda"
-                } else {
-                    mp.start()
-                    stateTv.text = "▶ Memutar"
-                }
+                if (mp.isPlaying) { mp.pause(); stateTv.text = "Dijeda" }
+                else { mp.start(); stateTv.text = "Memutar" }
             } else if (initialAudio != null && initialAudio.exists()) {
                 loadAndPlay(initialAudio)
             } else {
-                Toast.makeText(context, "Pilih file audio dulu atau tekan Synth Pad!", Toast.LENGTH_SHORT).show()
+                host.showToast("Media Player", "Pilih file audio terlebih dahulu")
             }
-        }, LinearLayout.LayoutParams(-2, dp(context, 34)).apply { rightMargin = dp(context, 8) })
+        }, LinearLayout.LayoutParams(-2, dp(context, 32)).apply { rightMargin = dp(context, 6) })
 
-        controls.addView(UiKit.chipButton(context, "⏹ Stop") {
+        controls.addView(UiKit.chipButton(context, "Stop") {
             stopAndRelease()
-            stateTv.text = "⏹ Dihentikan"
-        }, LinearLayout.LayoutParams(-2, dp(context, 34)))
+            stateTv.text = "Dihentikan"
+        }, LinearLayout.LayoutParams(-2, dp(context, 32)))
 
-        root.addView(controls, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 14) })
-
-        // Built-in PC Soundboard / Synth Pads so sound works immediately without external MP3s
-        root.addView(
-            UiKit.label(context, "🎹 Built-in PC Synth Deck (Klik untuk tes suara langsung):", 11.5f, UiKit.MUTED),
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 6) }
-        )
+        root.addView(controls, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 12) })
+        root.addView(UiKit.label(context, "Built-in PC Synth Deck:", 11f, UiKit.MUTED),
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 5) })
 
         val notes = listOf(
-            "Do" to ToneGenerator.TONE_DTMF_1,
-            "Re" to ToneGenerator.TONE_DTMF_2,
-            "Mi" to ToneGenerator.TONE_DTMF_3,
-            "Fa" to ToneGenerator.TONE_DTMF_4,
-            "Sol" to ToneGenerator.TONE_DTMF_5,
-            "La" to ToneGenerator.TONE_DTMF_6,
-            "Si" to ToneGenerator.TONE_DTMF_8,
-            "Do+" to ToneGenerator.TONE_DTMF_0
+            "C4" to ToneGenerator.TONE_DTMF_1,
+            "D4" to ToneGenerator.TONE_DTMF_2,
+            "E4" to ToneGenerator.TONE_DTMF_3,
+            "F4" to ToneGenerator.TONE_DTMF_4,
+            "G4" to ToneGenerator.TONE_DTMF_5,
+            "A4" to ToneGenerator.TONE_DTMF_6,
+            "B4" to ToneGenerator.TONE_DTMF_8,
+            "C5" to ToneGenerator.TONE_DTMF_0
         )
         val padViews = notes.map { (name, tone) ->
-            UiKit.chipButton(context, "♪ $name", Color.argb(55, 99, 102, 241)) {
+            UiKit.chipButton(context, name, Color.argb(60, 99, 102, 241)) {
                 try {
                     val tg = ToneGenerator(AudioManager.STREAM_MUSIC, 85)
-                    tg.startTone(tone, 190)
-                    root.postDelayed({ try { tg.release() } catch (_: Throwable) {} }, 250)
+                    tg.startTone(tone, 180)
+                    root.postDelayed({ try { tg.release() } catch (_: Throwable) {} }, 240)
                 } catch (_: Throwable) {
                 }
             }
         }
-        root.addView(UiKit.buildGrid(context, 4, 38, padViews), LinearLayout.LayoutParams(-1, -2))
+        root.addView(UiKit.buildGrid(context, 4, 34, padViews), LinearLayout.LayoutParams(-1, -2))
 
         initialAudio?.takeIf { it.exists() }?.let { loadAndPlay(it) }
         return root

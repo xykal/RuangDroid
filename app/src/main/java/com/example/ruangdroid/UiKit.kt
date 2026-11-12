@@ -1,29 +1,52 @@
 package com.example.ruangdroid
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.Shader
 import android.graphics.Typeface
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
+import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
+import kotlin.math.min
 
 object UiKit {
-    const val INK = 0xFFF2F6FF.toInt()
-    const val MUTED = 0xFFAEBCD6.toInt()
+    const val INK = 0xFFF4F7FF.toInt()
+    const val MUTED = 0xFFA5B4CE.toInt()
+
+    val fluentInterpolator = DecelerateInterpolator(1.8f)
+    val springInterpolator = OvershootInterpolator(0.9f)
+
+    /**
+     * Resolution & DPI-normalized scaling unit.
+     * Blends physical density with actual viewport short-edge (reference 390dp)
+     * so custom DPI settings (320..640), compact phones, and large tablets all stay proportional,
+     * plus honors the user's Desktop UI Scale slider (75%..135%).
+     */
+    fun unit(context: Context): Float {
+        val dm = context.resources.displayMetrics
+        val shortEdgePx = min(dm.widthPixels, dm.heightPixels).toFloat().coerceAtLeast(320f)
+        val viewportUnit = shortEdgePx / 395f
+        val blended = (dm.density * 0.45f) + (viewportUnit * 0.55f)
+        return (blended * DesktopPrefs.cachedScaleFactor).coerceIn(1.1f, 5.0f)
+    }
 
     fun dp(context: Context, value: Int): Int =
-        (value * context.resources.displayMetrics.density).toInt()
+        (value * unit(context)).toInt()
+
+    fun spPx(context: Context, value: Float): Float =
+        value * unit(context)
 
     fun rounded(context: Context, color: Int, radiusDp: Int): GradientDrawable =
         GradientDrawable().apply {
@@ -31,20 +54,29 @@ object UiKit {
             cornerRadius = dp(context, radiusDp).toFloat()
         }
 
-    fun strokeRounded(context: Context, color: Int, strokeColor: Int, radiusDp: Int, strokeDp: Int = 1): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(context, radiusDp).toFloat()
-            setStroke(dp(context, strokeDp).coerceAtLeast(1), strokeColor)
-        }
+    fun strokeRounded(
+        context: Context,
+        color: Int,
+        strokeColor: Int,
+        radiusDp: Int,
+        strokeDp: Int = 1
+    ): GradientDrawable = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(context, radiusDp).toFloat()
+        setStroke(dp(context, strokeDp).coerceAtLeast(1), strokeColor)
+    }
 
-    fun gradientRounded(context: Context, colors: IntArray, strokeColor: Int, radiusDp: Int): GradientDrawable =
-        GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply {
-            cornerRadius = dp(context, radiusDp).toFloat()
-            if (strokeColor != 0) {
-                setStroke(dp(context, 1).coerceAtLeast(1), strokeColor)
-            }
+    fun gradientRounded(
+        context: Context,
+        colors: IntArray,
+        strokeColor: Int,
+        radiusDp: Int
+    ): GradientDrawable = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply {
+        cornerRadius = dp(context, radiusDp).toFloat()
+        if (strokeColor != 0) {
+            setStroke(dp(context, 1).coerceAtLeast(1), strokeColor)
         }
+    }
 
     fun label(
         context: Context,
@@ -55,34 +87,111 @@ object UiKit {
         maxLines: Int = 1
     ): TextView = TextView(context).apply {
         this.text = text
-        this.textSize = sizeSp
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, spPx(context, sizeSp))
         setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
         this.maxLines = maxLines
         ellipsize = TextUtils.TruncateAt.END
     }
 
+    @SuppressLint("ClickableViewAccessibility")
+    fun attachPressBounce(view: View, minScale: Float = 0.93f) {
+        view.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    v.animate().scaleX(minScale).scaleY(minScale).setDuration(90).setInterpolator(fluentInterpolator).start()
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(140).setInterpolator(springInterpolator).start()
+                }
+            }
+            false
+        }
+    }
+
     fun chipButton(
         context: Context,
         text: String,
-        bgColor: Int = Color.argb(48, 215, 229, 255),
+        bgColor: Int = Color.argb(46, 215, 229, 255),
         strokeColor: Int = Color.argb(65, 255, 255, 255),
         textColor: Int = INK,
         onClick: () -> Unit
     ): TextView = TextView(context).apply {
         this.text = text
-        textSize = 11.5f
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, spPx(context, 11.2f))
         setTextColor(textColor)
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
-        setPadding(dp(context, 11), dp(context, 5), dp(context, 11), dp(context, 5))
-        background = strokeRounded(context, bgColor, strokeColor, 10)
+        setPadding(dp(context, 10), dp(context, 4), dp(context, 10), dp(context, 4))
+        background = strokeRounded(context, bgColor, strokeColor, 9)
+        attachPressBounce(this, 0.95f)
         setOnClickListener { onClick() }
     }
 
     /**
-     * Crash-proof responsive grid built from horizontal LinearLayout rows.
-     * Eliminates all Android GridLayout measurement edge-cases.
+     * Custom Fluent Slider (100% custom PC look — zero Android SeekBar!).
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    fun buildFluentSlider(
+        context: Context,
+        minVal: Int,
+        maxVal: Int,
+        initialVal: Int,
+        accentColor: Int,
+        onValueChanged: (Int) -> Unit
+    ): View {
+        var current = initialVal.coerceIn(minVal, maxVal)
+        val range = (maxVal - minVal).coerceAtLeast(1)
+
+        return object : View(context) {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+            override fun onDraw(canvas: Canvas) {
+                val w = width.toFloat()
+                val h = height.toFloat()
+                val pad = dp(context, 10).toFloat()
+                val trackW = (w - pad * 2).coerceAtLeast(10f)
+                val cy = h / 2f
+                val trackH = dp(context, 5).toFloat()
+                val frac = (current - minVal).toFloat() / range.toFloat()
+                val thumbX = pad + trackW * frac
+
+                // Background rail
+                paint.color = Color.argb(65, 255, 255, 255)
+                canvas.drawRoundRect(RectF(pad, cy - trackH / 2, w - pad, cy + trackH / 2), trackH, trackH, paint)
+
+                // Active fill rail
+                paint.color = accentColor
+                canvas.drawRoundRect(RectF(pad, cy - trackH / 2, thumbX, cy + trackH / 2), trackH, trackH, paint)
+
+                // Outer thumb ring
+                paint.color = Color.WHITE
+                canvas.drawCircle(thumbX, cy, dp(context, 8).toFloat(), paint)
+                paint.color = accentColor
+                canvas.drawCircle(thumbX, cy, dp(context, 4).toFloat(), paint)
+            }
+
+            override fun onTouchEvent(event: MotionEvent): Boolean {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                if (event.actionMasked in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE)) {
+                    val pad = dp(context, 10).toFloat()
+                    val trackW = (width - pad * 2).coerceAtLeast(10f)
+                    val frac = ((event.x - pad) / trackW).coerceIn(0f, 1f)
+                    val next = (minVal + frac * range).toInt().coerceIn(minVal, maxVal)
+                    if (next != current) {
+                        current = next
+                        onValueChanged(current)
+                        invalidate()
+                    }
+                    return true
+                }
+                return super.onTouchEvent(event)
+            }
+        }
+    }
+
+    /**
+     * Responsive grid built from LinearLayout rows — crash-proof on every screen & DPI.
      */
     fun buildGrid(
         context: Context,
@@ -118,9 +227,6 @@ object UiKit {
         return container
     }
 
-    /**
-     * Safely converts any Drawable (AdaptiveIconDrawable, VectorDrawable, etc.) into a bounded Bitmap.
-     */
     fun safeDrawableToBitmap(drawable: Drawable?, sizePx: Int): Bitmap? {
         if (drawable == null) return null
         return try {
@@ -135,58 +241,7 @@ object UiKit {
         }
     }
 
-    /**
-     * Generates crisp Windows 11-style vector-rendered icons for Built-in PC Apps & .EXE programs.
-     */
     fun builtInIcon(context: Context, code: String, c1: Int, c2: Int, glyph: String): Drawable {
-        val size = dp(context, 48).coerceAtLeast(64)
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-
-        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(0f, 0f, size.toFloat(), size.toFloat(), c1, c2, Shader.TileMode.CLAMP)
-        }
-        val pad = size * 0.06f
-        val rect = RectF(pad, pad, size - pad, size - pad)
-        val r = size * 0.24f
-        canvas.drawRoundRect(rect, r, r, bgPaint)
-
-        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = (size * 0.03f).coerceAtLeast(1.5f)
-            color = Color.argb(90, 255, 255, 255)
-        }
-        canvas.drawRoundRect(rect, r, r, borderPaint)
-
-        // Subtle glass highlight on top half
-        val shinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(35, 255, 255, 255)
-        }
-        canvas.drawRoundRect(RectF(pad, pad, size - pad, size * 0.48f), r, r, shinePaint)
-
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            textSize = if (glyph.length <= 2) size * 0.44f else size * 0.28f
-        }
-        val fm = textPaint.fontMetrics
-        val cy = (size / 2f) - (fm.ascent + fm.descent) / 2f
-        canvas.drawText(glyph, size / 2f, cy, textPaint)
-
-        if (code == "exe_item") {
-            val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(16, 24, 40) }
-            val badgeRect = RectF(size * 0.44f, size * 0.66f, size * 0.94f, size * 0.94f)
-            canvas.drawRoundRect(badgeRect, size * 0.08f, size * 0.08f, badgePaint)
-            val exeText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.rgb(125, 211, 252)
-                textAlign = Paint.Align.CENTER
-                typeface = Typeface.DEFAULT_BOLD
-                textSize = size * 0.18f
-            }
-            canvas.drawText("EXE", badgeRect.centerX(), badgeRect.centerY() + size * 0.06f, exeText)
-        }
-
-        return BitmapDrawable(context.resources, bmp)
+        return VectorIcons.get(context, code, dp(context, 48).coerceAtLeast(64), c1)
     }
 }

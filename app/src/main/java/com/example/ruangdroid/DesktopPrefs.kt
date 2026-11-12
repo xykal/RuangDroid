@@ -34,60 +34,69 @@ data class ThemePalette(
 class DesktopPrefs(private val context: Context) {
     private val prefs = context.getSharedPreferences("ruangdroid_prefs", Context.MODE_PRIVATE)
 
+    companion object {
+        @Volatile
+        var cachedScaleFactor: Float = 1.0f
+    }
+
+    init {
+        cachedScaleFactor = (prefs.getInt("ui_scale_pct", 100).coerceIn(75, 135)) / 100f
+    }
+
     val themes = listOf(
         ThemePalette(
-            name = "Win11 Midnight",
-            bgColors = intArrayOf(Color.rgb(12, 24, 52), Color.rgb(22, 46, 88), Color.rgb(34, 68, 118)),
+            name = "Win11 Bloom",
+            bgColors = intArrayOf(Color.rgb(10, 22, 48), Color.rgb(20, 44, 88), Color.rgb(32, 66, 120)),
             accent = Color.rgb(96, 165, 250),
-            taskbarBg = Color.argb(235, 11, 18, 34),
-            panelColors = intArrayOf(Color.rgb(20, 32, 56), Color.rgb(14, 22, 40)),
-            windowHeaderActive = Color.rgb(25, 42, 74),
-            windowHeaderInactive = Color.rgb(18, 27, 46)
+            taskbarBg = Color.argb(232, 10, 16, 30),
+            panelColors = intArrayOf(Color.rgb(19, 30, 54), Color.rgb(13, 20, 38)),
+            windowHeaderActive = Color.rgb(23, 39, 70),
+            windowHeaderInactive = Color.rgb(16, 25, 44)
         ),
         ThemePalette(
-            name = "DeX Carbon",
-            bgColors = intArrayOf(Color.rgb(16, 18, 24), Color.rgb(28, 32, 42), Color.rgb(40, 45, 58)),
+            name = "DeX Obsidian",
+            bgColors = intArrayOf(Color.rgb(14, 16, 22), Color.rgb(25, 29, 39), Color.rgb(36, 41, 54)),
             accent = Color.rgb(129, 140, 248),
-            taskbarBg = Color.argb(240, 14, 16, 22),
-            panelColors = intArrayOf(Color.rgb(26, 29, 38), Color.rgb(18, 20, 27)),
-            windowHeaderActive = Color.rgb(34, 38, 52),
-            windowHeaderInactive = Color.rgb(22, 25, 34)
+            taskbarBg = Color.argb(238, 12, 14, 20),
+            panelColors = intArrayOf(Color.rgb(24, 27, 36), Color.rgb(16, 18, 25)),
+            windowHeaderActive = Color.rgb(32, 36, 50),
+            windowHeaderInactive = Color.rgb(20, 23, 32)
         ),
         ThemePalette(
             name = "Aurora Emerald",
-            bgColors = intArrayOf(Color.rgb(8, 32, 38), Color.rgb(15, 54, 60), Color.rgb(22, 74, 76)),
+            bgColors = intArrayOf(Color.rgb(7, 29, 35), Color.rgb(14, 50, 56), Color.rgb(20, 70, 72)),
             accent = Color.rgb(52, 211, 153),
-            taskbarBg = Color.argb(236, 8, 22, 27),
-            panelColors = intArrayOf(Color.rgb(15, 42, 48), Color.rgb(10, 28, 33)),
-            windowHeaderActive = Color.rgb(18, 56, 62),
-            windowHeaderInactive = Color.rgb(12, 36, 42)
+            taskbarBg = Color.argb(235, 8, 20, 25),
+            panelColors = intArrayOf(Color.rgb(14, 40, 46), Color.rgb(9, 26, 31)),
+            windowHeaderActive = Color.rgb(17, 52, 58),
+            windowHeaderInactive = Color.rgb(11, 34, 40)
         ),
         ThemePalette(
-            name = "Sunset Cyber",
-            bgColors = intArrayOf(Color.rgb(32, 16, 46), Color.rgb(58, 25, 68), Color.rgb(82, 34, 72)),
-            accent = Color.rgb(251, 146, 60),
-            taskbarBg = Color.argb(236, 22, 12, 32),
-            panelColors = intArrayOf(Color.rgb(42, 22, 54), Color.rgb(26, 14, 36)),
-            windowHeaderActive = Color.rgb(58, 28, 70),
-            windowHeaderInactive = Color.rgb(34, 18, 44)
+            name = "Cyber Neon",
+            bgColors = intArrayOf(Color.rgb(28, 14, 44), Color.rgb(52, 22, 66), Color.rgb(76, 30, 70)),
+            accent = Color.rgb(244, 114, 182),
+            taskbarBg = Color.argb(235, 19, 10, 29),
+            panelColors = intArrayOf(Color.rgb(38, 19, 50), Color.rgb(24, 12, 34)),
+            windowHeaderActive = Color.rgb(54, 25, 68),
+            windowHeaderInactive = Color.rgb(32, 16, 42)
         ),
         ThemePalette(
-            name = "XP Bliss Teal",
-            bgColors = intArrayOf(Color.rgb(14, 62, 112), Color.rgb(24, 98, 142), Color.rgb(34, 118, 96)),
+            name = "XP Bliss Modern",
+            bgColors = intArrayOf(Color.rgb(12, 58, 108), Color.rgb(22, 92, 136), Color.rgb(30, 112, 92)),
             accent = Color.rgb(74, 222, 128),
-            taskbarBg = Color.argb(238, 14, 42, 84),
-            panelColors = intArrayOf(Color.rgb(18, 52, 96), Color.rgb(12, 36, 70)),
-            windowHeaderActive = Color.rgb(24, 72, 136),
-            windowHeaderInactive = Color.rgb(18, 48, 92)
+            taskbarBg = Color.argb(236, 12, 38, 78),
+            panelColors = intArrayOf(Color.rgb(16, 48, 90), Color.rgb(11, 32, 64)),
+            windowHeaderActive = Color.rgb(22, 68, 130),
+            windowHeaderInactive = Color.rgb(16, 44, 86)
         ),
         ThemePalette(
-            name = "Nordic Slate",
-            bgColors = intArrayOf(Color.rgb(30, 41, 59), Color.rgb(45, 59, 82), Color.rgb(56, 74, 102)),
+            name = "Nordic Frost",
+            bgColors = intArrayOf(Color.rgb(26, 36, 52), Color.rgb(40, 54, 76), Color.rgb(52, 70, 96)),
             accent = Color.rgb(56, 189, 248),
-            taskbarBg = Color.argb(236, 18, 26, 38),
-            panelColors = intArrayOf(Color.rgb(30, 41, 59), Color.rgb(20, 28, 42)),
-            windowHeaderActive = Color.rgb(38, 52, 74),
-            windowHeaderInactive = Color.rgb(26, 36, 52)
+            taskbarBg = Color.argb(235, 16, 23, 35),
+            panelColors = intArrayOf(Color.rgb(28, 38, 56), Color.rgb(18, 26, 40)),
+            windowHeaderActive = Color.rgb(36, 50, 72),
+            windowHeaderInactive = Color.rgb(24, 34, 50)
         )
     )
 
@@ -96,12 +105,24 @@ class DesktopPrefs(private val context: Context) {
         set(value) = prefs.edit().putBoolean("landscape_lock", value).apply()
 
     var immersiveMode: Boolean
-        get() = prefs.getBoolean("immersive_mode", false)
+        get() = prefs.getBoolean("immersive_mode", true) // True PC full-window feel by default!
         set(value) = prefs.edit().putBoolean("immersive_mode", value).apply()
 
-    var freeformExternalApps: Boolean
-        get() = prefs.getBoolean("freeform_external", true)
-        set(value) = prefs.edit().putBoolean("freeform_external", value).apply()
+    var centerTaskbar: Boolean
+        get() = prefs.getBoolean("center_taskbar", false)
+        set(value) = prefs.edit().putBoolean("center_taskbar", value).apply()
+
+    var systemOverlayEnabled: Boolean
+        get() = prefs.getBoolean("system_overlay_dock", false)
+        set(value) = prefs.edit().putBoolean("system_overlay_dock", value).apply()
+
+    var uiScalePercent: Int
+        get() = prefs.getInt("ui_scale_pct", 100).coerceIn(75, 135)
+        set(value) {
+            val v = value.coerceIn(75, 135)
+            cachedScaleFactor = v / 100f
+            prefs.edit().putInt("ui_scale_pct", v).apply()
+        }
 
     var iconScale: Int
         get() = prefs.getInt("icon_scale", 1).coerceIn(0, 2)
@@ -219,21 +240,18 @@ class DesktopPrefs(private val context: Context) {
     }
 
     fun ensureSeeded(installed: List<Pair<String, String>>) {
-        if (prefs.getBoolean("seeded_v2_0", false) || installed.isEmpty()) return
+        if (prefs.getBoolean("seeded_v3_0", false) || installed.isEmpty()) return
 
         val sysPkgs = mutableListOf<String>()
         val mediaPkgs = mutableListOf<String>()
-        val workPkgs = mutableListOf<String>()
 
         for ((pkg, label) in installed) {
             val key = "$pkg $label".lowercase(Locale.ROOT)
             when {
-                listOf("setting", "setelan", "pengaturan", "file", "clock", "jam", "calc", "camera", "kamera", "phone", "telepon").any { key.contains(it) } ->
+                listOf("setting", "setelan", "pengaturan", "file", "clock", "jam", "camera", "kamera", "phone", "shizuku", "termux").any { key.contains(it) } ->
                     if (sysPkgs.size < 8) sysPkgs.add(pkg)
-                listOf("chrome", "browser", "youtube", "music", "musik", "gallery", "galeri", "photo", "foto", "video", "map", "play").any { key.contains(it) } ->
+                listOf("chrome", "browser", "youtube", "music", "gallery", "photo", "whatsapp", "telegram", "play").any { key.contains(it) } ->
                     if (mediaPkgs.size < 8) mediaPkgs.add(pkg)
-                listOf("whatsapp", "telegram", "mail", "gmail", "pesan", "message", "calendar", "doc", "drive", "note").any { key.contains(it) } ->
-                    if (workPkgs.size < 8) workPkgs.add(pkg)
             }
         }
 
@@ -242,21 +260,18 @@ class DesktopPrefs(private val context: Context) {
         if (mediaPkgs.isEmpty() && allPkgs.size > 3) mediaPkgs.addAll(allPkgs.drop(3).take(3))
 
         if (getFolders().isEmpty()) {
-            val seeded = mutableListOf(
-                DesktopFolder(UUID.randomUUID().toString(), "Android Sistem", sysPkgs),
-                DesktopFolder(UUID.randomUUID().toString(), "Media & Sosial", (mediaPkgs + workPkgs).distinct().toMutableList())
+            saveFolders(
+                listOf(
+                    DesktopFolder(UUID.randomUUID().toString(), "Apps Sistem", sysPkgs),
+                    DesktopFolder(UUID.randomUUID().toString(), "Apps Favorit", mediaPkgs)
+                )
             )
-            saveFolders(seeded)
         }
 
-        if (getPinnedPackages().isEmpty()) {
-            savePinnedPackages(allPkgs.take(3))
-        }
-        if (getDesktopPackages().isEmpty()) {
-            saveDesktopPackages(allPkgs.take(4))
-        }
+        if (getPinnedPackages().isEmpty()) savePinnedPackages(allPkgs.take(2))
+        if (getDesktopPackages().isEmpty()) saveDesktopPackages(allPkgs.take(3))
 
-        prefs.edit().putBoolean("seeded_v2_0", true).apply()
+        prefs.edit().putBoolean("seeded_v3_0", true).apply()
     }
 
     private fun readStringList(key: String): MutableList<String> {

@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.ruangdroid"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0.0"
+        versionCode = 4
+        versionName = "3.0.0"
     }
 
     compileOptions {
@@ -36,4 +36,9 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }

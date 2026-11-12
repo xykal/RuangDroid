@@ -3,14 +3,15 @@ package com.example.ruangdroid
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Typeface
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.util.UUID
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -18,10 +19,11 @@ class DesktopWindowState(
     val id: String,
     val appKey: String,
     var title: String,
-    val glyph: String,
+    val iconId: String,
     val frame: LinearLayout,
     val headerBar: LinearLayout,
     val titleView: TextView,
+    val maxBtnIcon: ImageView,
     var minimized: Boolean = false,
     var maximized: Boolean = false,
     var savedX: Int = 0,
@@ -41,99 +43,96 @@ class FloatingWindowManager(
     var activeWindowId: String? = null
         private set
 
-    fun openWindows(): List<DesktopWindowState> = windows.toList()
+    private val snapGhost = View(context).apply {
+        visibility = View.GONE
+    }
 
+    init {
+        stage.addView(snapGhost, FrameLayout.LayoutParams(0, 0))
+    }
+
+    fun openWindows(): List<DesktopWindowState> = windows.toList()
     private fun dp(v: Int): Int = UiKit.dp(context, v)
 
-    /**
-     * Opens a new floating window (or focuses existing if singleInstance == true and already open).
-     */
     @SuppressLint("ClickableViewAccessibility")
     fun openWindow(
         appKey: String,
         title: String,
-        glyph: String,
+        iconId: String,
         singleInstance: Boolean = false,
-        preferredWidthDp: Int = 500,
-        preferredHeightDp: Int = 340,
+        preferredWidthDp: Int = 510,
+        preferredHeightDp: Int = 345,
         onCloseCleanup: (() -> Unit)? = null,
         contentBuilder: (DesktopWindowState) -> View
     ): DesktopWindowState {
         if (singleInstance) {
             val existing = windows.find { it.appKey == appKey }
             if (existing != null) {
-                existing.minimized = false
-                existing.frame.visibility = View.VISIBLE
                 focusWindow(existing.id)
                 return existing
             }
         }
 
         val dm = context.resources.displayMetrics
-        val stageW = if (stage.width > 0) stage.width else dm.widthPixels - dp(24)
-        val stageH = if (stage.height > 0) stage.height else (dm.heightPixels - dp(84)).coerceAtLeast(dp(260))
+        val stageW = stage.width.takeIf { it > 0 } ?: (dm.widthPixels - dp(16))
+        val stageH = stage.height.takeIf { it > 0 } ?: (dm.heightPixels - dp(72)).coerceAtLeast(dp(240))
+        val isNarrow = stageW < dp(520)
 
-        val isNarrow = stageW < dp(540)
         val initW = if (isNarrow) {
             (stageW * 0.96f).toInt()
         } else {
-            min(dp(preferredWidthDp), (stageW * 0.88f).toInt()).coerceAtLeast(dp(280))
+            min(dp(preferredWidthDp), (stageW * 0.88f).toInt()).coerceAtLeast(dp(270))
         }
         val initH = if (isNarrow) {
-            (stageH * 0.86f).toInt()
+            (stageH * 0.88f).toInt()
         } else {
-            min(dp(preferredHeightDp), (stageH * 0.86f).toInt()).coerceAtLeast(dp(210))
+            min(dp(preferredHeightDp), (stageH * 0.88f).toInt()).coerceAtLeast(dp(200))
         }
 
-        val cascadeOffset = (windows.size % 6) * dp(22)
-        val initX = ((stageW - initW) / 2 + cascadeOffset).coerceIn(dp(4), max(dp(4), stageW - initW - dp(4)))
-        val initY = ((stageH - initH) / 3 + cascadeOffset).coerceIn(dp(4), max(dp(4), stageH - initH - dp(4)))
+        val cascade = (windows.size % 6) * dp(20)
+        val initX = ((stageW - initW) / 2 + cascade).coerceIn(dp(4), max(dp(4), stageW - initW - dp(4)))
+        val initY = ((stageH - initH) / 3 + cascade).coerceIn(dp(4), max(dp(4), stageH - initH - dp(4)))
 
         val theme = prefs.currentTheme
         val winFrame = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             isClickable = true
             isFocusable = true
-            elevation = dp(12).toFloat()
-            background = UiKit.strokeRounded(
-                context,
-                Color.rgb(17, 25, 42),
-                Color.argb(110, 255, 255, 255),
-                14,
-                1
-            )
+            elevation = dp(14).toFloat()
+            background = UiKit.strokeRounded(context, Color.rgb(15, 23, 38), theme.accent, 13, 1)
         }
 
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(6), dp(8), dp(6))
-            background = UiKit.rounded(context, theme.windowHeaderActive, 13)
+            setPadding(dp(10), dp(4), dp(6), dp(4))
+            background = UiKit.rounded(context, theme.windowHeaderActive, 12)
         }
 
-        val glyphView = TextView(context).apply {
-            text = glyph
-            textSize = 14f
-            setPadding(0, 0, dp(8), 0)
+        val appIcon = ImageView(context).apply {
+            setImageDrawable(VectorIcons.get(context, iconId, dp(20), theme.accent))
+            scaleType = ImageView.ScaleType.FIT_CENTER
         }
-        header.addView(glyphView)
+        header.addView(appIcon, LinearLayout.LayoutParams(dp(20), dp(20)).apply { rightMargin = dp(8) })
 
-        val titleTv = UiKit.label(context, title, 12.5f, UiKit.INK, bold = true).apply {
+        val titleTv = UiKit.label(context, title, 12f, UiKit.INK, bold = true).apply {
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(titleTv, LinearLayout.LayoutParams(0, dp(28), 1f))
+        header.addView(titleTv, LinearLayout.LayoutParams(0, dp(26), 1f))
 
+        val maxImg = ImageView(context)
         val id = UUID.randomUUID().toString()
         val state = DesktopWindowState(
             id = id,
             appKey = appKey,
             title = title,
-            glyph = glyph,
+            iconId = iconId,
             frame = winFrame,
             headerBar = header,
             titleView = titleTv,
+            maxBtnIcon = maxImg,
             minimized = false,
-            maximized = isNarrow, // Auto-maximize on narrow portrait phones for usability, still restorable!
+            maximized = isNarrow,
             savedX = initX,
             savedY = initY,
             savedW = initW,
@@ -141,166 +140,197 @@ class FloatingWindowManager(
             onCloseCleanup = onCloseCleanup
         )
 
-        fun winBtn(symbol: String, bg: Int, onClick: () -> Unit) = TextView(context).apply {
-            text = symbol
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(UiKit.INK)
-            gravity = Gravity.CENTER
-            background = UiKit.rounded(context, bg, 8)
-            setOnClickListener {
-                focusWindow(state.id)
-                onClick()
+        fun syncMaxIcon() {
+            maxImg.setImageDrawable(
+                VectorIcons.get(context, if (state.maximized) "win_restore" else "win_max", dp(18))
+            )
+        }
+        syncMaxIcon()
+
+        fun chromeBtn(vecId: String, bg: Int, customImg: ImageView? = null, onClick: () -> Unit): LinearLayout {
+            return LinearLayout(context).apply {
+                gravity = Gravity.CENTER
+                background = UiKit.rounded(context, bg, 7)
+                val iv = customImg ?: ImageView(context).apply {
+                    setImageDrawable(VectorIcons.get(context, vecId, dp(18)))
+                }
+                addView(iv, LinearLayout.LayoutParams(dp(16), dp(16)))
+                UiKit.attachPressBounce(this, 0.90f)
+                setOnClickListener {
+                    focusWindow(state.id)
+                    onClick()
+                }
             }
         }
 
-        // Aero Snap Left / Right buttons on wide landscape screens
         if (!isNarrow) {
-            header.addView(winBtn("◧", Color.argb(32, 255, 255, 255)) {
+            header.addView(chromeBtn("win_snap_l", Color.argb(30, 255, 255, 255)) {
                 snapWindow(state, leftHalf = true)
-            }, LinearLayout.LayoutParams(dp(28), dp(26)).apply { rightMargin = dp(4) })
+            }, LinearLayout.LayoutParams(dp(26), dp(24)).apply { rightMargin = dp(3) })
 
-            header.addView(winBtn("◨", Color.argb(32, 255, 255, 255)) {
+            header.addView(chromeBtn("win_snap_r", Color.argb(30, 255, 255, 255)) {
                 snapWindow(state, leftHalf = false)
-            }, LinearLayout.LayoutParams(dp(28), dp(26)).apply { rightMargin = dp(6) })
+            }, LinearLayout.LayoutParams(dp(26), dp(24)).apply { rightMargin = dp(5) })
         }
 
-        // Minimize (—)
-        header.addView(winBtn("—", Color.argb(38, 255, 255, 255)) {
+        header.addView(chromeBtn("win_min", Color.argb(36, 255, 255, 255)) {
             minimizeWindow(state.id)
-        }, LinearLayout.LayoutParams(dp(30), dp(26)).apply { rightMargin = dp(4) })
+        }, LinearLayout.LayoutParams(dp(28), dp(24)).apply { rightMargin = dp(4) })
 
-        // Maximize / Restore (▢)
-        val maxBtn = winBtn(if (state.maximized) "❐" else "▢", Color.argb(38, 255, 255, 255)) {
+        header.addView(chromeBtn("win_max", Color.argb(36, 255, 255, 255), customImg = maxImg) {
             toggleMaximize(state)
-        }
-        header.addView(maxBtn, LinearLayout.LayoutParams(dp(30), dp(26)).apply { rightMargin = dp(4) })
+            syncMaxIcon()
+        }, LinearLayout.LayoutParams(dp(28), dp(24)).apply { rightMargin = dp(4) })
 
-        // Close (✕)
-        header.addView(winBtn("✕", Color.argb(175, 220, 38, 38)) {
+        header.addView(chromeBtn("win_close", Color.argb(185, 220, 38, 38)) {
             closeWindow(state.id)
-        }, LinearLayout.LayoutParams(dp(32), dp(26)))
+        }, LinearLayout.LayoutParams(dp(30), dp(24)))
 
-        // Dragging TitleBar + Double-Tap to Maximize
+        // Smooth Drag + Edge Aero Snap Preview + Double-Tap Maximize
         var dragStartX = 0f
         var dragStartY = 0f
         var startMarginX = 0
         var startMarginY = 0
-        var lastDownTime = 0L
+        var lastDown = 0L
+        var pendingSnapMode = 0 // 0=none, 1=left, 2=right, 3=max
 
         header.setOnTouchListener { _, ev ->
+            val sw = stage.width.coerceAtLeast(dp(300))
+            val sh = stage.height.coerceAtLeast(dp(220))
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     focusWindow(state.id)
                     val now = System.currentTimeMillis()
-                    if (now - lastDownTime < 280L) {
+                    if (now - lastDown < 280L) {
                         toggleMaximize(state)
-                        maxBtn.text = if (state.maximized) "❐" else "▢"
-                        lastDownTime = 0L
+                        syncMaxIcon()
+                        lastDown = 0L
                         return@setOnTouchListener true
                     }
-                    lastDownTime = now
+                    lastDown = now
+                    winFrame.setLayerType(View.LAYER_TYPE_HARDWARE, null)
                     val lp = winFrame.layoutParams as FrameLayout.LayoutParams
                     dragStartX = ev.rawX
                     dragStartY = ev.rawY
                     startMarginX = lp.leftMargin
                     startMarginY = lp.topMargin
+                    pendingSnapMode = 0
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (ev.rawX - dragStartX).toInt()
                     val dy = (ev.rawY - dragStartY).toInt()
-                    if (state.maximized && (kotlin.math.abs(dx) > dp(10) || kotlin.math.abs(dy) > dp(10))) {
-                        // Unmaximize when dragged away from top
+                    if (state.maximized && (abs(dx) > dp(10) || abs(dy) > dp(10))) {
                         state.maximized = false
-                        maxBtn.text = "▢"
+                        syncMaxIcon()
                         val lp = winFrame.layoutParams as FrameLayout.LayoutParams
                         lp.width = state.savedW
                         lp.height = state.savedH
-                        startMarginX = (ev.rawX.toInt() - state.savedW / 2).coerceAtLeast(0)
+                        startMarginX = (ev.rawX.toInt() - state.savedW / 2).coerceIn(0, max(0, sw - state.savedW))
                         startMarginY = 0
                         dragStartX = ev.rawX
                         dragStartY = ev.rawY
                     }
                     if (!state.maximized) {
                         val lp = winFrame.layoutParams as FrameLayout.LayoutParams
-                        val sw = stage.width.coerceAtLeast(dp(300))
-                        val sh = stage.height.coerceAtLeast(dp(220))
-                        val newX = (startMarginX + dx).coerceIn(-lp.width + dp(90), sw - dp(90))
-                        val newY = (startMarginY + dy).coerceIn(0, sh - dp(40))
-                        lp.leftMargin = newX
-                        lp.topMargin = newY
-                        state.savedX = newX
-                        state.savedY = newY
+                        val nx = (startMarginX + dx).coerceIn(-lp.width + dp(85), sw - dp(85))
+                        val ny = (startMarginY + dy).coerceIn(0, sh - dp(36))
+                        lp.leftMargin = nx
+                        lp.topMargin = ny
+                        state.savedX = nx
+                        state.savedY = ny
                         winFrame.layoutParams = lp
+
+                        // Edge Aero Snap Ghost detection
+                        val edgeZone = dp(22)
+                        pendingSnapMode = when {
+                            !isNarrow && ev.rawX <= edgeZone -> 1
+                            !isNarrow && ev.rawX >= sw - edgeZone -> 2
+                            ev.rawY <= dp(18) -> 3
+                            else -> 0
+                        }
+                        updateSnapGhost(pendingSnapMode, sw, sh)
                     }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    winFrame.setLayerType(View.LAYER_TYPE_NONE, null)
+                    snapGhost.visibility = View.GONE
+                    when (pendingSnapMode) {
+                        1 -> { snapWindow(state, leftHalf = true); syncMaxIcon() }
+                        2 -> { snapWindow(state, leftHalf = false); syncMaxIcon() }
+                        3 -> { if (!state.maximized) { toggleMaximize(state); syncMaxIcon() } }
+                    }
+                    pendingSnapMode = 0
                     true
                 }
                 else -> false
             }
         }
 
-        winFrame.addView(header, LinearLayout.LayoutParams(-1, dp(38)))
+        winFrame.addView(header, LinearLayout.LayoutParams(-1, dp(36)))
 
-        // Body Wrapper (Content + Bottom-Right Resize Grip)
         val bodyContainer = FrameLayout(context).apply {
-            setBackgroundColor(Color.rgb(15, 23, 38))
+            setBackgroundColor(Color.rgb(13, 20, 34))
             setOnClickListener { focusWindow(state.id) }
         }
 
         val contentView = try {
             contentBuilder(state)
         } catch (t: Throwable) {
-            UiKit.label(context, "Gagal memuat konten: ${t.message}", 12f, Color.rgb(252, 165, 165), maxLines = 6).apply {
+            UiKit.label(context, "Error memuat jendela: ${t.message}", 12f, Color.rgb(252, 165, 165), maxLines = 6).apply {
                 setPadding(dp(16), dp(16), dp(16), dp(16))
             }
         }
         bodyContainer.addView(contentView, FrameLayout.LayoutParams(-1, -1))
 
-        // Resize corner handle (◢)
-        val resizeHandle = TextView(context).apply {
-            text = "◢"
-            textSize = 13f
-            setTextColor(Color.argb(145, 185, 205, 240))
-            gravity = Gravity.BOTTOM or Gravity.END
-            setPadding(dp(4), dp(4), dp(5), dp(2))
+        // Custom Diagonal Corner Resize Grip
+        val resizeGrip = View(context).apply {
+            background = UiKit.rounded(context, Color.argb(70, 148, 163, 184), 6)
         }
-        var resStartX = 0f
-        var resStartY = 0f
-        var resStartW = 0
-        var resStartH = 0
-        resizeHandle.setOnTouchListener { _, ev ->
+        var rsX = 0f
+        var rsY = 0f
+        var rsW = 0
+        var rsH = 0
+        resizeGrip.setOnTouchListener { _, ev ->
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     focusWindow(state.id)
+                    winFrame.setLayerType(View.LAYER_TYPE_HARDWARE, null)
                     if (state.maximized) {
                         state.maximized = false
-                        maxBtn.text = "▢"
+                        syncMaxIcon()
                     }
                     val lp = winFrame.layoutParams as FrameLayout.LayoutParams
-                    resStartX = ev.rawX
-                    resStartY = ev.rawY
-                    resStartW = if (lp.width > 0) lp.width else stage.width
-                    resStartH = if (lp.height > 0) lp.height else stage.height
+                    rsX = ev.rawX
+                    rsY = ev.rawY
+                    rsW = if (lp.width > 0) lp.width else stage.width
+                    rsH = if (lp.height > 0) lp.height else stage.height
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val lp = winFrame.layoutParams as FrameLayout.LayoutParams
                     val sw = stage.width.coerceAtLeast(dp(300))
                     val sh = stage.height.coerceAtLeast(dp(220))
-                    val newW = (resStartW + (ev.rawX - resStartX).toInt()).coerceIn(dp(250), sw)
-                    val newH = (resStartH + (ev.rawY - resStartY).toInt()).coerceIn(dp(185), sh)
-                    lp.width = newW
-                    lp.height = newH
-                    state.savedW = newW
-                    state.savedH = newH
+                    val nw = (rsW + (ev.rawX - rsX).toInt()).coerceIn(dp(240), sw)
+                    val nh = (rsH + (ev.rawY - rsY).toInt()).coerceIn(dp(180), sh)
+                    lp.width = nw
+                    lp.height = nh
+                    state.savedW = nw
+                    state.savedH = nh
                     winFrame.layoutParams = lp
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    winFrame.setLayerType(View.LAYER_TYPE_NONE, null)
                     true
                 }
                 else -> false
             }
         }
-        bodyContainer.addView(resizeHandle, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.BOTTOM or Gravity.END))
+        bodyContainer.addView(resizeGrip, FrameLayout.LayoutParams(dp(16), dp(16), Gravity.BOTTOM or Gravity.END).apply {
+            rightMargin = dp(3); bottomMargin = dp(3)
+        })
 
         winFrame.addView(bodyContainer, LinearLayout.LayoutParams(-1, 0, 1f))
 
@@ -313,10 +343,48 @@ class FloatingWindowManager(
             }
         }
 
+        winFrame.scaleX = 0.89f
+        winFrame.scaleY = 0.89f
+        winFrame.alpha = 0f
+
         windows.add(state)
         stage.addView(winFrame, initialLp)
         focusWindow(state.id)
+
+        winFrame.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .alpha(1f)
+            .setDuration(190)
+            .setInterpolator(UiKit.fluentInterpolator)
+            .start()
+
         return state
+    }
+
+    private fun updateSnapGhost(mode: Int, sw: Int, sh: Int) {
+        if (mode == 0) {
+            snapGhost.visibility = View.GONE
+            return
+        }
+        val accent = prefs.currentTheme.accent
+        snapGhost.background = UiKit.strokeRounded(
+            context,
+            Color.argb(55, Color.red(accent), Color.green(accent), Color.blue(accent)),
+            accent,
+            14,
+            2
+        )
+        val pad = dp(6)
+        val lp = when (mode) {
+            1 -> FrameLayout.LayoutParams(sw / 2 - pad * 2, sh - pad * 2).apply { leftMargin = pad; topMargin = pad }
+            2 -> FrameLayout.LayoutParams(sw / 2 - pad * 2, sh - pad * 2).apply { leftMargin = sw / 2 + pad; topMargin = pad }
+            else -> FrameLayout.LayoutParams(sw - pad * 2, sh - pad * 2).apply { leftMargin = pad; topMargin = pad }
+        }
+        snapGhost.layoutParams = lp
+        snapGhost.visibility = View.VISIBLE
+        snapGhost.bringToFront()
+        activeWindowId?.let { id -> windows.find { it.id == id }?.frame?.bringToFront() }
     }
 
     fun snapWindow(state: DesktopWindowState, leftHalf: Boolean) {
@@ -324,16 +392,16 @@ class FloatingWindowManager(
         val sh = stage.height.coerceAtLeast(dp(220))
         state.maximized = false
         val halfW = sw / 2
-        val lp = FrameLayout.LayoutParams(halfW, sh).apply {
+        state.frame.layoutParams = FrameLayout.LayoutParams(halfW, sh).apply {
             leftMargin = if (leftHalf) 0 else halfW
             topMargin = 0
         }
-        winApply(state, lp)
+        focusWindow(state.id)
     }
 
     fun toggleMaximize(state: DesktopWindowState) {
         state.maximized = !state.maximized
-        val lp = if (state.maximized) {
+        state.frame.layoutParams = if (state.maximized) {
             FrameLayout.LayoutParams(-1, -1)
         } else {
             FrameLayout.LayoutParams(state.savedW, state.savedH).apply {
@@ -341,11 +409,9 @@ class FloatingWindowManager(
                 topMargin = state.savedY
             }
         }
-        winApply(state, lp)
-    }
-
-    private fun winApply(state: DesktopWindowState, lp: FrameLayout.LayoutParams) {
-        state.frame.layoutParams = lp
+        state.maxBtnIcon.setImageDrawable(
+            VectorIcons.get(context, if (state.maximized) "win_restore" else "win_max", dp(18))
+        )
         focusWindow(state.id)
     }
 
@@ -354,6 +420,15 @@ class FloatingWindowManager(
         if (target.minimized) {
             target.minimized = false
             target.frame.visibility = View.VISIBLE
+            target.frame.scaleX = 0.85f
+            target.frame.scaleY = 0.85f
+            target.frame.translationY = dp(60).toFloat()
+            target.frame.alpha = 0f
+            target.frame.animate()
+                .scaleX(1f).scaleY(1f).translationY(0f).alpha(1f)
+                .setDuration(180)
+                .setInterpolator(UiKit.fluentInterpolator)
+                .start()
         }
         target.frame.bringToFront()
         activeWindowId = id
@@ -375,12 +450,25 @@ class FloatingWindowManager(
     fun minimizeWindow(id: String) {
         val target = windows.find { it.id == id } ?: return
         target.minimized = true
-        target.frame.visibility = View.GONE
         if (activeWindowId == id) {
             activeWindowId = windows.lastOrNull { !it.minimized }?.id
         }
         refreshHeaderStyles()
         onWindowsChanged()
+
+        target.frame.animate()
+            .scaleX(0.70f)
+            .scaleY(0.70f)
+            .translationY(dp(90).toFloat())
+            .alpha(0f)
+            .setDuration(150)
+            .withEndAction {
+                if (target.minimized) target.frame.visibility = View.GONE
+                target.frame.translationY = 0f
+                target.frame.scaleX = 1f
+                target.frame.scaleY = 1f
+            }
+            .start()
     }
 
     fun minimizeAll() {
@@ -400,12 +488,19 @@ class FloatingWindowManager(
             removed.onCloseCleanup?.invoke()
         } catch (_: Throwable) {
         }
-        stage.removeView(removed.frame)
         if (activeWindowId == id) {
             activeWindowId = windows.lastOrNull { !it.minimized }?.id
         }
         refreshHeaderStyles()
         onWindowsChanged()
+
+        removed.frame.animate()
+            .scaleX(0.88f)
+            .scaleY(0.88f)
+            .alpha(0f)
+            .setDuration(140)
+            .withEndAction { stage.removeView(removed.frame) }
+            .start()
     }
 
     fun refreshHeaderStyles() {
@@ -415,13 +510,13 @@ class FloatingWindowManager(
             w.headerBar.background = UiKit.rounded(
                 context,
                 if (isActive) theme.windowHeaderActive else theme.windowHeaderInactive,
-                13
+                12
             )
             w.frame.background = UiKit.strokeRounded(
                 context,
-                Color.rgb(17, 25, 42),
+                Color.rgb(15, 23, 38),
                 if (isActive) theme.accent else Color.argb(65, 255, 255, 255),
-                14,
+                13,
                 1
             )
         }

@@ -3,8 +3,6 @@ package com.example.ruangdroid
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.ActivityOptions
-import android.app.AlertDialog
-import android.app.Dialog
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -29,22 +27,19 @@ import android.provider.Settings
 import android.text.Editable
 import android.text.TextUtils
 import android.text.TextWatcher
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
-import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.TextView
-import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -52,6 +47,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
+import kotlin.math.max
+import kotlin.math.min
 
 data class AndroidAppEntry(
     val packageName: String,
@@ -73,13 +70,16 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     private lateinit var wallpaperView: ImageView
     private lateinit var desktopSurfaceHost: FrameLayout
     private lateinit var windowStage: FrameLayout
+    private lateinit var overlayStage: FrameLayout
     private lateinit var taskbarHost: FrameLayout
     private lateinit var windowManager: FloatingWindowManager
+    override lateinit var overlays: OverlayKit
 
     private val installedApps = mutableListOf<AndroidAppEntry>()
     private val appByPkg = mutableMapOf<String, AndroidAppEntry>()
     private val scanExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var scanningApps = false
+    private var wasImmersiveApplied = false
 
     private fun dp(v: Int): Int = UiKit.dp(this, v)
 
@@ -91,10 +91,10 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         } catch (_: Throwable) {
         }
 
-        // Build persistent 3-layer PC Desktop Compositor ONCE so open windows stay alive
+        // Persistent 4-Layer Custom Desktop Compositor (100% Full Window — Zero Stock Android UI)
         rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(12, 20, 36))
+            setBackgroundColor(Color.rgb(10, 16, 30))
         }
 
         val stageStack = FrameLayout(this)
@@ -110,13 +110,17 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         windowStage = FrameLayout(this)
         stageStack.addView(windowStage, FrameLayout.LayoutParams(-1, -1))
 
+        overlayStage = FrameLayout(this)
+        stageStack.addView(overlayStage, FrameLayout.LayoutParams(-1, -1))
+
         rootLayout.addView(stageStack, LinearLayout.LayoutParams(-1, 0, 1f))
 
         taskbarHost = FrameLayout(this).apply {
-            setPadding(dp(10), dp(2), dp(10), dp(6))
+            setPadding(dp(8), dp(2), dp(8), dp(5))
         }
-        rootLayout.addView(taskbarHost, LinearLayout.LayoutParams(-1, dp(58)))
+        rootLayout.addView(taskbarHost, LinearLayout.LayoutParams(-1, dp(52)))
 
+        overlays = OverlayKit(this, overlayStage, prefs)
         windowManager = FloatingWindowManager(
             context = this,
             stage = windowStage,
@@ -126,10 +130,13 @@ class MainActivity : Activity(), DesktopHostCallbacks {
 
         setContentView(rootLayout)
 
-        // Apply orientation & system bars safely AFTER setContentView
         applyOrientationAndBarsSafe()
         refreshDesktopUI()
         triggerAsyncAppScan()
+
+        if (prefs.systemOverlayEnabled && SystemFloatingOverlay.canDraw(this)) {
+            SystemFloatingOverlay.show(this, prefs)
+        }
     }
 
     override fun onResume() {
@@ -137,22 +144,32 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         applyOrientationAndBarsSafe()
         renderTaskbar()
         triggerAsyncAppScan()
+        if (prefs.systemOverlayEnabled && SystemFloatingOverlay.canDraw(this)) {
+            SystemFloatingOverlay.show(this, prefs)
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        overlays.dismissOverlay()
         refreshDesktopUI()
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (overlays.hasOpenOverlay()) {
+            overlays.dismissOverlay()
+            return
+        }
         val activeId = windowManager.activeWindowId
         if (activeId != null) {
             windowManager.minimizeWindow(activeId)
         }
     }
 
-    private var wasImmersiveApplied = false
+    override fun showToast(title: String, message: String) {
+        overlays.notify(title, message)
+    }
 
     private fun applyOrientationAndBarsSafe() {
         try {
@@ -166,8 +183,8 @@ class MainActivity : Activity(), DesktopHostCallbacks {
 
         try {
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-            window.statusBarColor = prefs.currentTheme.bgColors.first()
-            window.navigationBarColor = Color.rgb(10, 15, 28)
+            window.statusBarColor = Color.TRANSPARENT
+            window.navigationBarColor = Color.rgb(8, 12, 22)
         } catch (_: Throwable) {
         }
 
@@ -208,17 +225,13 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     private fun triggerAsyncAppScan() {
         if (scanningApps) return
         scanningApps = true
-        val iconPx = dp(48).coerceIn(48, 144)
+        val iconPx = dp(46).coerceIn(48, 144)
         scanExecutor.execute {
             try {
                 val pm = packageManager
                 val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
                 @Suppress("DEPRECATION")
-                val rawList = try {
-                    pm.queryIntentActivities(query, 0)
-                } catch (_: Throwable) {
-                    emptyList()
-                }
+                val rawList = try { pm.queryIntentActivities(query, 0) } catch (_: Throwable) { emptyList() }
 
                 val parsed = mutableListOf<AndroidAppEntry>()
                 val seen = HashSet<String>()
@@ -230,14 +243,12 @@ class MainActivity : Activity(), DesktopHostCallbacks {
 
                     val lbl = try {
                         ri.loadLabel(pm)?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: pkg
-                    } catch (_: Throwable) {
-                        pkg
-                    }
+                    } catch (_: Throwable) { pkg }
+
                     val bmp = try {
                         UiKit.safeDrawableToBitmap(ri.loadIcon(pm), iconPx)
-                    } catch (_: Throwable) {
-                        null
-                    }
+                    } catch (_: Throwable) { null }
+
                     parsed.add(AndroidAppEntry(pkg, cls, lbl, bmp))
                 }
                 parsed.sortBy { it.label.lowercase(Locale.getDefault()) }
@@ -262,12 +273,13 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         }
     }
 
-    private fun isPcLandscape(): Boolean {
-        val cfg = resources.configuration
-        return cfg.orientation == Configuration.ORIENTATION_LANDSCAPE || cfg.screenWidthDp >= 600
+    private fun isWideDesktop(): Boolean {
+        val dm = resources.displayMetrics
+        return dm.widthPixels > dm.heightPixels || (dm.widthPixels / UiKit.unit(this)) >= 580f
     }
 
     override fun refreshDesktopUI() {
+        taskbarHost.layoutParams = LinearLayout.LayoutParams(-1, dp(52))
         applyOrientationAndBarsSafe()
         applyWallpaper()
         renderDesktopSurface()
@@ -278,23 +290,19 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     private fun applyWallpaper() {
         val theme = prefs.currentTheme
         if (prefs.useCustomWallpaper) {
-            val f = prefs.customWallpaperFile()
-            val bmp = try { BitmapFactory.decodeFile(f.absolutePath) } catch (_: Throwable) { null }
+            val bmp = try { BitmapFactory.decodeFile(prefs.customWallpaperFile().absolutePath) } catch (_: Throwable) { null }
             if (bmp != null) {
                 wallpaperView.setImageBitmap(bmp)
                 return
             }
         }
-        wallpaperView.setImageDrawable(
-            GradientDrawable(GradientDrawable.Orientation.TL_BR, theme.bgColors)
-        )
+        wallpaperView.setImageDrawable(GradientDrawable(GradientDrawable.Orientation.TL_BR, theme.bgColors))
     }
 
     private fun batteryInfo(): Pair<Int, Boolean> {
         return try {
             val bm = getSystemService(BATTERY_SERVICE) as BatteryManager
-            val pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100)
-            pct to bm.isCharging
+            bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100) to bm.isCharging
         } catch (_: Throwable) {
             100 to false
         }
@@ -304,174 +312,195 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         return try {
             val am = getSystemService(ACTIVITY_SERVICE) as ActivityManager
             val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
-            val used = (mi.totalMem - mi.availMem) / 1073741824.0
-            val tot = mi.totalMem / 1073741824.0
-            String.format(Locale.US, "RAM %.1f / %.1f GB", used, tot)
-        } catch (_: Throwable) {
-            "RAM aktif"
-        }
+            String.format(Locale.US, "RAM %.1f / %.1f GB", (mi.totalMem - mi.availMem) / 1073741824.0, mi.totalMem / 1073741824.0)
+        } catch (_: Throwable) { "RAM Aktif" }
     }
 
     private fun storageSummary(): String {
         return try {
             val st = StatFs(Environment.getDataDirectory().path)
-            val free = st.availableBytes / 1073741824.0
-            val tot = st.totalBytes / 1073741824.0
-            String.format(Locale.US, "Disk %.0f GB kosong / %.0f GB", free, tot)
-        } catch (_: Throwable) {
-            "Storage aktif"
-        }
+            String.format(Locale.US, "Disk %.0f / %.0f GB Free", st.availableBytes / 1073741824.0, st.totalBytes / 1073741824.0)
+        } catch (_: Throwable) { "Storage Aktif" }
     }
 
-    // ==================== LAYER 1: DESKTOP ICONS & WIDGET ====================
+    // ==================== LAYER 1: RESPONSIVE DESKTOP WORKSPACE ====================
     private fun renderDesktopSurface() {
         desktopSurfaceHost.removeAllViews()
         val theme = prefs.currentTheme
-        val pcMode = isPcLandscape()
-        val widthDp = resources.configuration.screenWidthDp
+        val wide = isWideDesktop()
+        val dm = resources.displayMetrics
+        val availWidthUnits = dm.widthPixels / UiKit.unit(this)
 
         val wrapper = LinearLayout(this).apply {
-            orientation = if (pcMode) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(4))
+            orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            setPadding(dp(10), dp(8), dp(10), dp(4))
+            // Right-click / Long-press empty desktop surface -> Desktop Context Menu!
+            setOnLongClickListener {
+                showDesktopBlankContextMenu()
+                true
+            }
         }
 
         val leftDesktop = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
 
-        // Top quick desktop bar
+        // Sleek Desktop Header Bar
         val topStrip = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(4), 0, dp(4), dp(6))
         }
-        val statusTitle = if (prefs.landscapeLock) "🖥️ RuangDroid PC OS v2.0" else "📱 RuangDroid Hybrid v2.0"
-        topStrip.addView(UiKit.label(this, statusTitle, 12.5f, UiKit.INK, bold = true),
-            LinearLayout.LayoutParams(0, dp(28), 1f))
+        val titleBadge = UiKit.label(
+            this,
+            "RuangDroid Desktop OS 3.0",
+            11.8f,
+            UiKit.INK,
+            bold = true
+        )
+        topStrip.addView(titleBadge, LinearLayout.LayoutParams(0, dp(26), 1f))
 
-        topStrip.addView(UiKit.chipButton(this, "🍷 Install .EXE", Color.argb(85, 190, 24, 93)) {
+        topStrip.addView(UiKit.chipButton(this, "Shizuku / HUD", Color.argb(85, 79, 70, 229)) {
+            openShizukuHub()
+        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
+
+        topStrip.addView(UiKit.chipButton(this, "+ .EXE", Color.argb(85, 190, 24, 93)) {
             openExeCenter(null)
-        }, LinearLayout.LayoutParams(-2, dp(28)).apply { rightMargin = dp(6) })
+        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
 
-        topStrip.addView(UiKit.chipButton(this, "📁+ Folder") {
-            showCreateOrEditFolderDialog(null)
-        }, LinearLayout.LayoutParams(-2, dp(28)).apply { rightMargin = dp(6) })
+        topStrip.addView(UiKit.chipButton(this, "+ Folder") {
+            showCreateOrEditFolderWindow(null)
+        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
 
-        topStrip.addView(UiKit.chipButton(this, "➕ App Android") {
-            showDesktopShortcutPicker()
-        }, LinearLayout.LayoutParams(-2, dp(28)))
+        topStrip.addView(UiKit.chipButton(this, "+ Shortcut") {
+            showDesktopShortcutPickerWindow()
+        }, LinearLayout.LayoutParams(-2, dp(26)))
 
         leftDesktop.addView(topStrip)
 
-        val scale = prefs.iconScale
-        val baseCols = when {
-            widthDp >= 860 -> 7
-            pcMode -> 6
-            else -> 4
+        // Dynamic Responsive Column Calculation for ANY Resolution / Aspect Ratio / Scale
+        val sidebarUnits = if (wide && availWidthUnits >= 650f) 195f else 0f
+        val gridWidthUnits = (availWidthUnits - sidebarUnits - 24f).coerceAtLeast(260f)
+        val targetCellUnits = when (prefs.iconScale) {
+            0 -> 78f
+            2 -> 108f
+            else -> 92f
         }
-        val cols = (baseCols + (1 - scale)).coerceIn(3, 8)
-        val cellHeightDp = when (scale) {
-            0 -> 78
-            2 -> 102
-            else -> 88
+        val cols = (gridWidthUnits / targetCellUnits).toInt().coerceIn(3, 10)
+        val cellHeightDp = when (prefs.iconScale) {
+            0 -> 72
+            2 -> 94
+            else -> 82
         }
-        val iconSizeDp = when (scale) {
-            0 -> 34
-            2 -> 48
-            else -> 40
+        val iconSizeDp = when (prefs.iconScale) {
+            0 -> 32
+            2 -> 44
+            else -> 38
         }
 
-        val allTiles = mutableListOf<View>()
+        val tiles = mutableListOf<View>()
 
-        // 1. Built-in PC Apps
+        // 1. Built-in PC Apps (Crisp Custom Vector Icons)
         for (bApp in BuiltInApps.all.filter { it.showOnDesktop }) {
-            allTiles.add(
+            tiles.add(
                 desktopTileView(
                     label = bApp.title,
-                    drawable = bApp.icon(this),
+                    drawable = bApp.icon(this, dp(iconSizeDp)),
                     iconSizeDp = iconSizeDp,
                     onClick = { launchBuiltInByKey(bApp.key) },
-                    onLongClick = { launchBuiltInByKey(bApp.key) }
-                )
-            )
-        }
-
-        // 2. Installed .EXE Programs on Desktop
-        for (exe in prefs.getInstalledExes()) {
-            val exeFile = File(exe.exePath)
-            if (!exeFile.exists()) continue
-            val exeIcon = UiKit.builtInIcon(
-                this,
-                "exe_item",
-                Color.rgb(30, 64, 175),
-                Color.rgb(109, 40, 217),
-                if (exe.title.contains("Mine", ignoreCase = true)) "💣"
-                else if (exe.title.contains("Arkanoid", ignoreCase = true)) "🧱"
-                else "⚙️"
-            )
-            allTiles.add(
-                desktopTileView(
-                    label = exe.title,
-                    drawable = exeIcon,
-                    iconSizeDp = iconSizeDp,
-                    onClick = { openExeFile(exeFile) },
-                    onLongClick = {
-                        AlertDialog.Builder(this)
-                            .setTitle(exe.title)
-                            .setItems(arrayOf("▶ Jalankan Window (.EXE)", "🔍 Analisis PE Header", "🗑️ Hapus dari Desktop")) { _, w ->
-                                when (w) {
-                                    0 -> openExeFile(exeFile)
-                                    1 -> windowManager.openWindow("pe_${exe.id}", "PE Header — ${exe.title}", "🍷", singleInstance = true) {
-                                        ExeEmulatorApp.buildPeInspectorView(this, prefs, this, exeFile)
-                                    }
-                                    2 -> {
-                                        prefs.saveInstalledExes(prefs.getInstalledExes().filterNot { it.id == exe.id })
-                                        refreshDesktopUI()
-                                    }
-                                }
-                            }
-                            .show()
+                    onLongClick = { rawX, rawY ->
+                        overlays.showContextMenu(
+                            title = bApp.title,
+                            items = listOf(
+                                "Buka Jendela Baru" to { launchBuiltInByKey(bApp.key) },
+                                "Pengaturan Skala & Tema" to { openControlPanel() }
+                            ),
+                            rawX = rawX,
+                            rawY = rawY
+                        )
                     }
                 )
             )
         }
 
-        // 3. Desktop Folders (open inside Floating Windows!)
-        for (folder in prefs.getFolders()) {
-            val count = folder.packages.count { appByPkg.containsKey(it) }
-            val folderIcon = UiKit.builtInIcon(
-                this,
-                "folder",
-                Color.rgb(234, 179, 8),
-                Color.rgb(202, 138, 4),
-                "📁"
-            )
-            allTiles.add(
+        // 2. Installed .EXE Programs
+        for (exe in prefs.getInstalledExes()) {
+            val exeFile = File(exe.exePath)
+            if (!exeFile.exists()) continue
+            val iconKey = when {
+                exe.title.contains("Mine", ignoreCase = true) -> "minesweeper"
+                exe.title.contains("Arkanoid", ignoreCase = true) -> "arkanoid"
+                else -> "exe_item"
+            }
+            tiles.add(
                 desktopTileView(
-                    label = "${folder.name} ($count)",
-                    drawable = folderIcon,
+                    label = exe.title,
+                    drawable = VectorIcons.get(this, iconKey, dp(iconSizeDp)),
                     iconSizeDp = iconSizeDp,
-                    onClick = { openFolderFloatingWindow(folder) },
-                    onLongClick = { showCreateOrEditFolderDialog(folder) }
+                    onClick = { openExeFile(exeFile) },
+                    onLongClick = { rawX, rawY ->
+                        overlays.showContextMenu(
+                            title = exe.title,
+                            items = listOf(
+                                "Jalankan Window (.EXE)" to { openExeFile(exeFile) },
+                                "Inspeksi Binary PE Header" to {
+                                    windowManager.openWindow("pe_${exe.id}", "PE Header — ${exe.title}", "exe_center", singleInstance = true) {
+                                        ExeEmulatorApp.buildPeInspectorView(this, prefs, this, exeFile)
+                                    }
+                                },
+                                "Lepas dari Desktop" to {
+                                    prefs.saveInstalledExes(prefs.getInstalledExes().filterNot { it.id == exe.id })
+                                    refreshDesktopUI()
+                                }
+                            ),
+                            rawX = rawX,
+                            rawY = rawY
+                        )
+                    }
                 )
             )
         }
 
-        // 4. Android App Shortcuts on Desktop
+        // 3. Desktop Folders
+        for (folder in prefs.getFolders()) {
+            val count = folder.packages.count { appByPkg.containsKey(it) }
+            tiles.add(
+                desktopTileView(
+                    label = "${folder.name} ($count)",
+                    drawable = VectorIcons.get(this, "folder", dp(iconSizeDp)),
+                    iconSizeDp = iconSizeDp,
+                    onClick = { openFolderFloatingWindow(folder) },
+                    onLongClick = { rawX, rawY ->
+                        overlays.showContextMenu(
+                            title = folder.name,
+                            items = listOf(
+                                "Buka Jendela Folder" to { openFolderFloatingWindow(folder) },
+                                "Kelola Isi / Ubah Nama" to { showCreateOrEditFolderWindow(folder) },
+                                "Hapus Folder" to {
+                                    prefs.saveFolders(prefs.getFolders().filterNot { it.id == folder.id })
+                                    renderDesktopSurface()
+                                }
+                            ),
+                            rawX = rawX,
+                            rawY = rawY
+                        )
+                    }
+                )
+            )
+        }
+
+        // 4. Android App Shortcuts
         for (pkg in prefs.getDesktopPackages()) {
             val app = appByPkg[pkg] ?: continue
-            val drw: Drawable = if (app.iconBitmap != null) {
-                BitmapDrawable(resources, app.iconBitmap)
-            } else {
-                UiKit.builtInIcon(this, "apk", Color.rgb(59, 130, 246), Color.rgb(37, 99, 235), "🤖")
-            }
-            allTiles.add(
+            val drw: Drawable = if (app.iconBitmap != null) BitmapDrawable(resources, app.iconBitmap)
+            else VectorIcons.get(this, "explorer", dp(iconSizeDp))
+            tiles.add(
                 desktopTileView(
                     label = app.label,
                     drawable = drw,
                     iconSizeDp = iconSizeDp,
                     onClick = { launchAndroidApp(app) },
-                    onLongClick = { showAndroidAppContextMenu(app) }
+                    onLongClick = { rawX, rawY -> showAndroidAppContextMenu(app, rawX, rawY) }
                 )
             )
         }
@@ -479,13 +508,14 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         val scroll = ScrollView(this).apply {
             isFillViewport = false
             overScrollMode = View.OVER_SCROLL_NEVER
+            setOnLongClickListener { showDesktopBlankContextMenu(); true }
         }
-        scroll.addView(UiKit.buildGrid(this, cols, cellHeightDp, allTiles, hGapDp = 4, vGapDp = 4))
+        scroll.addView(UiKit.buildGrid(this, cols, cellHeightDp, tiles, hGapDp = 4, vGapDp = 4))
         leftDesktop.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        if (pcMode) {
+        if (sidebarUnits > 0f) {
             wrapper.addView(leftDesktop, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(10) })
-            wrapper.addView(buildPcWidgetSidebar(theme), LinearLayout.LayoutParams(dp(205), -1))
+            wrapper.addView(buildPcWidgetSidebar(theme), LinearLayout.LayoutParams(dp(190), -1))
         } else {
             wrapper.addView(leftDesktop, LinearLayout.LayoutParams(-1, -1))
         }
@@ -493,23 +523,50 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         desktopSurfaceHost.addView(wrapper, FrameLayout.LayoutParams(-1, -1))
     }
 
+    private fun showDesktopBlankContextMenu() {
+        overlays.showContextMenu(
+            title = "Menu Desktop RuangDroid",
+            items = listOf(
+                "Buat Folder Baru" to { showCreateOrEditFolderWindow(null) },
+                "Tambah Shortcut Aplikasi" to { showDesktopShortcutPickerWindow() },
+                "Ganti Tema Berikutnya" to { prefs.cycleTheme(); refreshDesktopUI() },
+                "Skala & Pengaturan Layar" to { openControlPanel() },
+                "Shizuku & Floating HUD" to { openShizukuHub() },
+                "Buka Terminal CMD" to { openTerminal(null) }
+            )
+        )
+    }
+
     private fun desktopTileView(
         label: String,
         drawable: Drawable,
         iconSizeDp: Int,
         onClick: () -> Unit,
-        onLongClick: () -> Unit
+        onLongClick: (Float, Float) -> Unit
     ): View {
+        var lastRawX = -1f
+        var lastRawY = -1f
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             isClickable = true
             isFocusable = true
-            background = UiKit.rounded(this@MainActivity, Color.argb(18, 255, 255, 255), 12)
+            background = UiKit.rounded(this@MainActivity, Color.argb(16, 255, 255, 255), 11)
             setPadding(dp(3), dp(4), dp(3), dp(3))
+            setOnTouchListener { v, ev ->
+                lastRawX = ev.rawX
+                lastRawY = ev.rawY
+                when (ev.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN ->
+                        v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(85).start()
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                        v.animate().scaleX(1f).scaleY(1f).setDuration(130).setInterpolator(UiKit.springInterpolator).start()
+                }
+                false
+            }
             setOnClickListener { onClick() }
             setOnLongClickListener {
-                onLongClick()
+                onLongClick(lastRawX, lastRawY)
                 true
             }
             addView(ImageView(this@MainActivity).apply {
@@ -519,7 +576,7 @@ class MainActivity : Activity(), DesktopHostCallbacks {
 
             addView(TextView(this@MainActivity).apply {
                 text = label
-                textSize = 10.5f
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, UiKit.spPx(this@MainActivity, 10f))
                 setTextColor(UiKit.INK)
                 setShadowLayer(4f, 0f, 1f, Color.BLACK)
                 gravity = Gravity.CENTER
@@ -535,45 +592,53 @@ class MainActivity : Activity(), DesktopHostCallbacks {
             orientation = LinearLayout.VERTICAL
             background = UiKit.strokeRounded(
                 this@MainActivity,
-                Color.argb(95, 12, 19, 34),
+                Color.argb(105, 10, 16, 30),
                 Color.argb(55, 255, 255, 255),
-                18
+                16
             )
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setPadding(dp(13), dp(11), dp(13), dp(11))
         }
 
         val now = Date()
-        card.addView(UiKit.label(this, SimpleDateFormat("HH:mm", Locale.getDefault()).format(now), 30f, UiKit.INK, bold = true))
-        card.addView(UiKit.label(this, SimpleDateFormat("EEEE, dd MMM", Locale.getDefault()).format(now), 11.5f, theme.accent, bold = true))
+        card.addView(UiKit.label(this, SimpleDateFormat("HH:mm", Locale.getDefault()).format(now), 27f, UiKit.INK, bold = true))
+        card.addView(UiKit.label(this, SimpleDateFormat("EEEE, dd MMM", Locale.getDefault()).format(now), 11f, theme.accent, bold = true))
 
-        val sep = View(this).apply { setBackgroundColor(Color.argb(35, 255, 255, 255)) }
-        card.addView(sep, LinearLayout.LayoutParams(-1, dp(1)).apply {
-            topMargin = dp(8); bottomMargin = dp(8)
-        })
+        card.addView(View(this).apply {
+            setBackgroundColor(Color.argb(35, 255, 255, 255))
+        }, LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(7); bottomMargin = dp(7) })
 
         val (bat, chg) = batteryInfo()
-        card.addView(UiKit.label(this, "${if (chg) "⚡ Charging" else "🔋 Baterai"}: $bat%", 11f, UiKit.INK, bold = true))
-        card.addView(UiKit.label(this, memorySummary(), 10.5f, UiKit.MUTED).apply { setPadding(0, dp(2), 0, 0) })
-        card.addView(UiKit.label(this, storageSummary(), 10.5f, UiKit.MUTED).apply { setPadding(0, dp(2), 0, 0) })
+        card.addView(UiKit.label(this, "${if (chg) "Charging" else "Battery"}: $bat%", 10.8f, UiKit.INK, bold = true))
+        card.addView(UiKit.label(this, memorySummary(), 10f, UiKit.MUTED).apply { setPadding(0, dp(2), 0, 0) })
+        card.addView(UiKit.label(this, storageSummary(), 10f, UiKit.MUTED).apply { setPadding(0, dp(2), 0, 0) })
+        card.addView(
+            UiKit.label(
+                this,
+                if (ShizukuBridge.hasPermission()) "Shizuku: Aktif" else "Shizuku: Standby",
+                10f,
+                if (ShizukuBridge.hasPermission()) Color.rgb(74, 222, 128) else UiKit.MUTED,
+                bold = true
+            ).apply { setPadding(0, dp(3), 0, 0) }
+        )
 
         card.addView(View(this), LinearLayout.LayoutParams(-1, 0, 1f))
 
-        card.addView(UiKit.chipButton(this, "📊 Task Manager", Color.argb(55, 20, 184, 166)) {
+        card.addView(UiKit.chipButton(this, "Task Manager", Color.argb(55, 20, 184, 166)) {
             openTaskManager()
-        }, LinearLayout.LayoutParams(-1, dp(32)).apply { bottomMargin = dp(6) })
+        }, LinearLayout.LayoutParams(-1, dp(29)).apply { bottomMargin = dp(5) })
 
         card.addView(UiKit.chipButton(
             this,
-            "🎛️ Quick Panel",
+            "Action Center",
             Color.argb(75, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent))
         ) {
-            showQuickSettingsPanel()
-        }, LinearLayout.LayoutParams(-1, dp(32)))
+            showQuickSettingsOverlay()
+        }, LinearLayout.LayoutParams(-1, dp(29)))
 
         return card
     }
 
-    // ==================== LAYER 3: WINDOWS 11 TASKBAR ====================
+    // ==================== LAYER 4: WINDOWS 11 FLUENT TASKBAR ====================
     private fun renderTaskbar() {
         taskbarHost.removeAllViews()
         val theme = prefs.currentTheme
@@ -584,36 +649,46 @@ class MainActivity : Activity(), DesktopHostCallbacks {
             background = UiKit.strokeRounded(
                 this@MainActivity,
                 theme.taskbarBg,
-                Color.argb(55, 255, 255, 255),
-                16
+                Color.argb(60, 255, 255, 255),
+                15
             )
-            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setPadding(dp(7), dp(3), dp(7), dp(3))
         }
 
-        // Start Button (⊞)
-        val startBtn = TextView(this).apply {
-            text = "⊞"
-            textSize = 21f
-            setTextColor(theme.accent)
+        if (prefs.centerTaskbar && isWideDesktop()) {
+            bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 0.35f))
+        }
+
+        // Vector Start Orb Button
+        val startBtn = LinearLayout(this).apply {
             gravity = Gravity.CENTER
-            background = UiKit.rounded(this@MainActivity, Color.argb(48, 131, 170, 255), 11)
-            setOnClickListener { showStartMenu(focusSearch = false) }
+            background = UiKit.rounded(this@MainActivity, Color.argb(42, 131, 170, 255), 10)
+            addView(ImageView(this@MainActivity).apply {
+                setImageDrawable(VectorIcons.get(this@MainActivity, "start_orb", dp(24)))
+            }, LinearLayout.LayoutParams(dp(22), dp(22)))
+            UiKit.attachPressBounce(this, 0.88f)
+            setOnClickListener { showStartMenuOverlay(focusSearch = false) }
         }
-        bar.addView(startBtn, LinearLayout.LayoutParams(dp(40), dp(38)).apply { rightMargin = dp(5) })
+        bar.addView(startBtn, LinearLayout.LayoutParams(dp(36), dp(34)).apply { rightMargin = dp(4) })
 
-        // Search Button
-        val searchBtn = TextView(this).apply {
-            text = if (isPcLandscape()) " 🔍 Cari" else "🔍"
-            textSize = 11.5f
-            setTextColor(UiKit.MUTED)
+        // Vector Search Pill
+        val searchBtn = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            background = UiKit.rounded(this@MainActivity, Color.argb(34, 215, 229, 255), 11)
-            setPadding(dp(8), 0, dp(8), 0)
-            setOnClickListener { showStartMenu(focusSearch = true) }
+            background = UiKit.rounded(this@MainActivity, Color.argb(32, 215, 229, 255), 10)
+            setPadding(dp(8), 0, dp(9), 0)
+            addView(ImageView(this@MainActivity).apply {
+                setImageDrawable(VectorIcons.get(this@MainActivity, "search", dp(16), UiKit.MUTED))
+            }, LinearLayout.LayoutParams(dp(14), dp(14)))
+            if (isWideDesktop()) {
+                addView(UiKit.label(this@MainActivity, "  Cari", 10.8f, UiKit.MUTED))
+            }
+            UiKit.attachPressBounce(this, 0.92f)
+            setOnClickListener { showStartMenuOverlay(focusSearch = true) }
         }
-        bar.addView(searchBtn, LinearLayout.LayoutParams(-2, dp(36)).apply { rightMargin = dp(8) })
+        bar.addView(searchBtn, LinearLayout.LayoutParams(-2, dp(34)).apply { rightMargin = dp(6) })
 
-        // Scrollable Middle Bar: Pinned Icons + Running Floating Window Tabs
+        // Pinned Icons + Running Window Tabs
         val midScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
@@ -623,111 +698,321 @@ class MainActivity : Activity(), DesktopHostCallbacks {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        // Pinned Built-in PC Apps
         for (bApp in BuiltInApps.all.filter { it.pinnedOnTaskbar }) {
             val holder = LinearLayout(this).apply {
                 gravity = Gravity.CENTER
-                background = UiKit.rounded(this@MainActivity, Color.argb(24, 255, 255, 255), 10)
+                background = UiKit.rounded(this@MainActivity, Color.argb(22, 255, 255, 255), 9)
+                addView(ImageView(this@MainActivity).apply {
+                    setImageDrawable(bApp.icon(this@MainActivity, dp(22)))
+                }, LinearLayout.LayoutParams(dp(22), dp(22)))
+                UiKit.attachPressBounce(this, 0.90f)
                 setOnClickListener { launchBuiltInByKey(bApp.key) }
             }
-            holder.addView(ImageView(this).apply {
-                setImageDrawable(bApp.icon(this@MainActivity))
-            }, LinearLayout.LayoutParams(dp(26), dp(26)))
-            midRow.addView(holder, LinearLayout.LayoutParams(dp(36), dp(36)).apply { rightMargin = dp(4) })
+            midRow.addView(holder, LinearLayout.LayoutParams(dp(34), dp(34)).apply { rightMargin = dp(4) })
         }
 
-        // Pinned Android Apps
         for (pkg in prefs.getPinnedPackages()) {
             val app = appByPkg[pkg] ?: continue
             val holder = LinearLayout(this).apply {
                 gravity = Gravity.CENTER
-                background = UiKit.rounded(this@MainActivity, Color.argb(22, 255, 255, 255), 10)
+                background = UiKit.rounded(this@MainActivity, Color.argb(20, 255, 255, 255), 9)
+                addView(ImageView(this@MainActivity).apply {
+                    if (app.iconBitmap != null) setImageBitmap(app.iconBitmap)
+                }, LinearLayout.LayoutParams(dp(22), dp(22)))
+                UiKit.attachPressBounce(this, 0.90f)
                 setOnClickListener { launchAndroidApp(app) }
-                setOnLongClickListener { showAndroidAppContextMenu(app); true }
+                setOnLongClickListener { showAndroidAppContextMenu(app, -1f, -1f); true }
             }
-            holder.addView(ImageView(this).apply {
-                if (app.iconBitmap != null) setImageBitmap(app.iconBitmap)
-            }, LinearLayout.LayoutParams(dp(24), dp(24)))
-            midRow.addView(holder, LinearLayout.LayoutParams(dp(36), dp(36)).apply { rightMargin = dp(4) })
+            midRow.addView(holder, LinearLayout.LayoutParams(dp(34), dp(34)).apply { rightMargin = dp(4) })
         }
 
-        // Divider if windows are open
         val openWins = windowManager.openWindows()
         if (openWins.isNotEmpty()) {
             midRow.addView(View(this).apply {
                 setBackgroundColor(Color.argb(55, 255, 255, 255))
-            }, LinearLayout.LayoutParams(dp(1), dp(24)).apply {
-                leftMargin = dp(4); rightMargin = dp(6)
-            })
+            }, LinearLayout.LayoutParams(dp(1), dp(20)).apply { leftMargin = dp(3); rightMargin = dp(5) })
         }
 
-        // Running Floating Windows Tabs!
         for (win in openWins) {
             val isFocused = (win.id == windowManager.activeWindowId && !win.minimized)
-            val tab = TextView(this).apply {
-                val shortTitle = if (win.title.length > 14) win.title.take(13) + "…" else win.title
-                text = "${win.glyph} $shortTitle"
-                textSize = 11f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(if (win.minimized) UiKit.MUTED else UiKit.INK)
-                gravity = Gravity.CENTER
-                setPadding(dp(10), 0, dp(10), 0)
+            val tab = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), 0, dp(9), 0)
                 background = UiKit.strokeRounded(
                     this@MainActivity,
                     if (isFocused) Color.argb(95, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent))
-                    else Color.argb(30, 255, 255, 255),
-                    if (isFocused) theme.accent else Color.argb(45, 255, 255, 255),
-                    10
+                    else Color.argb(28, 255, 255, 255),
+                    if (isFocused) theme.accent else Color.argb(42, 255, 255, 255),
+                    9
                 )
+                addView(ImageView(this@MainActivity).apply {
+                    setImageDrawable(VectorIcons.get(this@MainActivity, win.iconId, dp(16)))
+                }, LinearLayout.LayoutParams(dp(15), dp(15)).apply { rightMargin = dp(5) })
+
+                val shortTitle = if (win.title.length > 13) win.title.take(12) + "…" else win.title
+                addView(UiKit.label(this@MainActivity, shortTitle, 10.5f, if (win.minimized) UiKit.MUTED else UiKit.INK, bold = true))
+
+                UiKit.attachPressBounce(this, 0.94f)
                 setOnClickListener { windowManager.toggleTaskbarWindow(win.id) }
                 setOnLongClickListener {
-                    windowManager.closeWindow(win.id)
+                    overlays.showContextMenu(
+                        title = win.title,
+                        items = listOf(
+                            "Fokus / Tampilkan" to { windowManager.focusWindow(win.id) },
+                            "Minimize" to { windowManager.minimizeWindow(win.id) },
+                            "Maximize / Restore" to { windowManager.toggleMaximize(win) },
+                            "Tutup Jendela" to { windowManager.closeWindow(win.id) }
+                        )
+                    )
                     true
                 }
             }
-            midRow.addView(tab, LinearLayout.LayoutParams(-2, dp(34)).apply { rightMargin = dp(5) })
+            midRow.addView(tab, LinearLayout.LayoutParams(-2, dp(32)).apply { rightMargin = dp(4) })
         }
 
         midScroll.addView(midRow)
-        bar.addView(midScroll, LinearLayout.LayoutParams(0, dp(38), 1f))
+        bar.addView(midScroll, LinearLayout.LayoutParams(0, dp(36), 1f))
 
-        // System Tray -> Opens Bottom-Right Quick Settings Panel
+        // Right System Tray (Vector Wifi + Battery % + Clock)
         val (bat, chg) = batteryInfo()
         val now = Date()
         val tray = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = UiKit.rounded(this@MainActivity, Color.argb(38, 215, 229, 255), 11)
-            setPadding(dp(9), dp(3), dp(9), dp(3))
-            setOnClickListener { showQuickSettingsPanel() }
+            background = UiKit.rounded(this@MainActivity, Color.argb(36, 215, 229, 255), 10)
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            UiKit.attachPressBounce(this, 0.94f)
+            setOnClickListener { showQuickSettingsOverlay() }
         }
+        tray.addView(ImageView(this).apply {
+            setImageDrawable(VectorIcons.get(this@MainActivity, "tray_status", dp(16)))
+        }, LinearLayout.LayoutParams(dp(15), dp(15)).apply { rightMargin = dp(4) })
+
         tray.addView(
-            UiKit.label(this, "📶 🔊 ${if (chg) "⚡" else "🔋"}$bat%", 10.5f, UiKit.INK),
+            UiKit.label(this, "${if (chg) "+" else ""}$bat%", 10f, theme.accent, bold = true),
             LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(7) }
         )
-        val clockStack = LinearLayout(this).apply {
+
+        val clockCol = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
         }
-        clockStack.addView(UiKit.label(this, SimpleDateFormat("HH:mm", Locale.getDefault()).format(now), 10.5f, UiKit.INK, bold = true))
-        clockStack.addView(UiKit.label(this, SimpleDateFormat("dd/MM", Locale.getDefault()).format(now), 9f, UiKit.MUTED))
-        tray.addView(clockStack)
-        bar.addView(tray, LinearLayout.LayoutParams(-2, dp(38)).apply { leftMargin = dp(6) })
+        clockCol.addView(UiKit.label(this, SimpleDateFormat("HH:mm", Locale.getDefault()).format(now), 10.2f, UiKit.INK, bold = true))
+        clockCol.addView(UiKit.label(this, SimpleDateFormat("dd/MM", Locale.getDefault()).format(now), 8.5f, UiKit.MUTED))
+        tray.addView(clockCol)
+        bar.addView(tray, LinearLayout.LayoutParams(-2, dp(34)).apply { leftMargin = dp(5) })
 
-        // Far-right Windows "Show Desktop" sliver button
-        val showDesktopBtn = View(this).apply {
-            background = UiKit.rounded(this@MainActivity, Color.argb(65, 255, 255, 255), 4)
+        // Show Desktop Sliver
+        bar.addView(View(this).apply {
+            background = UiKit.rounded(this@MainActivity, Color.argb(75, 255, 255, 255), 3)
             setOnClickListener { windowManager.minimizeAll() }
-        }
-        bar.addView(showDesktopBtn, LinearLayout.LayoutParams(dp(6), dp(32)).apply { leftMargin = dp(5) })
+        }, LinearLayout.LayoutParams(dp(5), dp(28)).apply { leftMargin = dp(5) })
 
         taskbarHost.addView(bar, FrameLayout.LayoutParams(-1, -1))
     }
 
-    // ==================== BUILT-IN FLOATING APP DISPATCHERS ====================
+    // ==================== CUSTOM OVERLAY START MENU & QUICK CENTER (ZERO DIALOG) ====================
+    private fun showStartMenuOverlay(focusSearch: Boolean) {
+        val theme = prefs.currentTheme
+        val dm = resources.displayMetrics
+
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            elevation = dp(20).toFloat()
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = UiKit.gradientRounded(this@MainActivity, theme.panelColors, Color.argb(90, 255, 255, 255), 18)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(ImageView(this).apply {
+            setImageDrawable(VectorIcons.get(this@MainActivity, "start_orb", dp(22)))
+        }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { rightMargin = dp(8) })
+        header.addView(UiKit.label(this, "RuangDroid Start", 15f, UiKit.INK, bold = true),
+            LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(UiKit.chipButton(this, "Shizuku") {
+            overlays.dismissOverlay(); openShizukuHub()
+        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
+        header.addView(UiKit.chipButton(this, "Settings") {
+            overlays.dismissOverlay(); openControlPanel()
+        }, LinearLayout.LayoutParams(-2, dp(26)))
+        panel.addView(header)
+
+        val searchBox = EditText(this).apply {
+            hint = "Cari aplikasi PC, .EXE, atau aplikasi terpasang…"
+            setHintTextColor(UiKit.MUTED)
+            setTextColor(UiKit.INK)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, UiKit.spPx(this@MainActivity, 12.5f))
+            setSingleLine(true)
+            background = UiKit.rounded(this@MainActivity, Color.argb(36, 215, 229, 255), 11)
+            setPadding(dp(12), 0, dp(12), 0)
+        }
+        panel.addView(searchBox, LinearLayout.LayoutParams(-1, dp(36)).apply {
+            topMargin = dp(8); bottomMargin = dp(8)
+        })
+
+        val scroll = ScrollView(this).apply { overScrollMode = View.OVER_SCROLL_NEVER }
+        val gridHolder = FrameLayout(this)
+        scroll.addView(gridHolder)
+        val menuH = min(dp(300), (dm.heightPixels * 0.56f).toInt()).coerceAtLeast(dp(160))
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, menuH))
+
+        val cols = if (isWideDesktop()) 5 else 4
+
+        fun populate(q: String) {
+            gridHolder.removeAllViews()
+            val tiles = mutableListOf<View>()
+
+            BuiltInApps.all.filter { it.title.contains(q, ignoreCase = true) || it.subtitle.contains(q, ignoreCase = true) }
+                .forEach { bApp ->
+                    tiles.add(
+                        desktopTileView(bApp.title, bApp.icon(this, dp(36)), 36,
+                            onClick = { overlays.dismissOverlay(); launchBuiltInByKey(bApp.key) },
+                            onLongClick = { _, _ -> overlays.dismissOverlay(); launchBuiltInByKey(bApp.key) })
+                    )
+                }
+
+            installedApps.filter { it.label.contains(q, ignoreCase = true) }
+                .forEach { app ->
+                    val drw: Drawable = if (app.iconBitmap != null) BitmapDrawable(resources, app.iconBitmap)
+                    else VectorIcons.get(this, "explorer", dp(36))
+                    tiles.add(
+                        desktopTileView(app.label, drw, 36,
+                            onClick = { overlays.dismissOverlay(); launchAndroidApp(app) },
+                            onLongClick = { rx, ry -> showAndroidAppContextMenu(app, rx, ry) })
+                    )
+                }
+
+            gridHolder.addView(UiKit.buildGrid(this, cols, 76, tiles))
+        }
+        populate("")
+
+        searchBox.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = populate(s?.toString().orEmpty())
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+
+        val w = if (isWideDesktop()) min(dp(460), (dm.widthPixels * 0.65f).toInt()) else (dm.widthPixels * 0.94f).toInt()
+        val grav = if (prefs.centerTaskbar && isWideDesktop()) (Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL) else (Gravity.BOTTOM or Gravity.START)
+        overlays.showAnchoredPanel(panel, widthPx = w, gravity = grav, marginX = dp(10), marginY = dp(6))
+        if (focusSearch) searchBox.requestFocus()
+    }
+
+    private fun showQuickSettingsOverlay() {
+        val theme = prefs.currentTheme
+        val dm = resources.displayMetrics
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            elevation = dp(20).toFloat()
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = UiKit.gradientRounded(this@MainActivity, theme.panelColors, Color.argb(90, 255, 255, 255), 18)
+        }
+
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        head.addView(UiKit.label(this, "Quick Action Center", 14f, UiKit.INK, bold = true),
+            LinearLayout.LayoutParams(0, -2, 1f))
+        val (bat, chg) = batteryInfo()
+        head.addView(UiKit.label(this, "${if (chg) "Charging " else ""}$bat%", 11.5f, theme.accent, bold = true))
+        card.addView(head, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+
+        fun qTile(title: String, sub: String, active: Boolean, action: () -> Unit): View = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(9), dp(5), dp(9), dp(5))
+            val bg = if (active) Color.argb(100, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent))
+            else Color.argb(30, 215, 229, 255)
+            background = UiKit.strokeRounded(this@MainActivity, bg, Color.argb(if (active) 140 else 40, 255, 255, 255), 11)
+            UiKit.attachPressBounce(this, 0.94f)
+            setOnClickListener { action() }
+            addView(UiKit.label(this@MainActivity, title, 11f, UiKit.INK, bold = true))
+            addView(UiKit.label(this@MainActivity, sub, 9.2f, if (active) UiKit.INK else UiKit.MUTED))
+        }
+
+        val hudActive = prefs.systemOverlayEnabled && SystemFloatingOverlay.canDraw(this)
+        val tiles = listOf(
+            qTile("Wi-Fi", "Jaringan", true) { overlays.dismissOverlay(); openSystemAction(Settings.ACTION_WIFI_SETTINGS) },
+            qTile("Bluetooth", "Perangkat", false) { overlays.dismissOverlay(); openSystemAction(Settings.ACTION_BLUETOOTH_SETTINGS) },
+            qTile("Mode PC", if (prefs.landscapeLock) "Landscape" else "Auto", prefs.landscapeLock) {
+                prefs.landscapeLock = !prefs.landscapeLock
+                overlays.dismissOverlay()
+                refreshDesktopUI()
+            },
+            qTile("Full Window", if (prefs.immersiveMode) "Immersive" else "Standar", prefs.immersiveMode) {
+                prefs.immersiveMode = !prefs.immersiveMode
+                overlays.dismissOverlay()
+                refreshDesktopUI()
+            },
+            qTile("Floating HUD", if (hudActive) "Aktif" else "Mati", hudActive) {
+                overlays.dismissOverlay()
+                if (!SystemFloatingOverlay.canDraw(this)) {
+                    SystemFloatingOverlay.requestOverlayPermission(this)
+                } else {
+                    prefs.systemOverlayEnabled = !prefs.systemOverlayEnabled
+                    if (prefs.systemOverlayEnabled) SystemFloatingOverlay.show(this, prefs) else SystemFloatingOverlay.hide()
+                    showToast("Floating PC HUD", if (prefs.systemOverlayEnabled) "Aktif di atas semua app" else "Dinonaktifkan")
+                }
+            },
+            qTile("Tema", theme.name, false) {
+                prefs.cycleTheme()
+                refreshDesktopUI()
+                showQuickSettingsOverlay()
+            }
+        )
+        card.addView(UiKit.buildGrid(this, 3, 46, tiles), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+
+        // Custom Fluent Volume Slider (Zero Stock Android SeekBar!)
+        try {
+            val audio = getSystemService(AUDIO_SERVICE) as AudioManager
+            val maxV = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            val curV = audio.getStreamVolume(AudioManager.STREAM_MUSIC).coerceIn(0, maxV)
+            val volRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = UiKit.rounded(this@MainActivity, Color.argb(26, 255, 255, 255), 11)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+            }
+            volRow.addView(UiKit.label(this, "Vol", 10.5f, UiKit.INK, bold = true))
+            volRow.addView(
+                UiKit.buildFluentSlider(this, 0, maxV, curV, theme.accent) { v ->
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, v, 0)
+                },
+                LinearLayout.LayoutParams(0, dp(26), 1f)
+            )
+            card.addView(volRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+        } catch (_: Throwable) {
+        }
+
+        card.addView(
+            UiKit.label(this, "${memorySummary()}  ·  Skala UI: ${prefs.uiScalePercent}%", 10f, UiKit.MUTED),
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) }
+        )
+
+        val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        foot.addView(UiKit.chipButton(this, "Shizuku & Termux") {
+            overlays.dismissOverlay(); openShizukuHub()
+        }, LinearLayout.LayoutParams(0, dp(30), 1f).apply { rightMargin = dp(5) })
+        foot.addView(UiKit.chipButton(this, "Control Panel") {
+            overlays.dismissOverlay(); openControlPanel()
+        }, LinearLayout.LayoutParams(0, dp(30), 1f))
+        card.addView(foot)
+
+        val w = if (isWideDesktop()) dp(345) else (dm.widthPixels * 0.94f).toInt()
+        overlays.showAnchoredPanel(card, widthPx = w, gravity = Gravity.BOTTOM or Gravity.END, marginX = dp(10), marginY = dp(6))
+    }
+
+    // ==================== FLOATING WINDOW LAUNCHERS ====================
     private fun launchBuiltInByKey(key: String) {
         when (key) {
             "explorer" -> openExplorer(null)
+            "shizuku_hub" -> openShizukuHub()
             "exe_center" -> openExeCenter(null)
             "browser" -> openBrowser(null)
             "notepad" -> openNotepad(null)
@@ -741,55 +1026,61 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     }
 
     override fun openExplorer(startDir: File?) {
-        windowManager.openWindow("explorer", "File Explorer", "🗂️", singleInstance = false, preferredWidthDp = 560, preferredHeightDp = 360) {
+        windowManager.openWindow("explorer", "File Explorer", "explorer", singleInstance = false, preferredWidthDp = 540, preferredHeightDp = 350) {
             ExplorerAndNotepad.buildExplorerView(this, this, it, startDir)
         }
     }
 
+    override fun openShizukuHub() {
+        windowManager.openWindow("shizuku_hub", "Shizuku, Termux & Floating HUD", "shizuku_hub", singleInstance = true, preferredWidthDp = 550, preferredHeightDp = 370) {
+            SystemFloatingOverlay.buildShizukuTermuxHubView(this, prefs, this)
+        }
+    }
+
     override fun openNotepad(file: File?) {
-        windowManager.openWindow("notepad", "Notepad", "📝", singleInstance = false, preferredWidthDp = 500, preferredHeightDp = 340) {
-            ExplorerAndNotepad.buildNotepadView(this, it, file)
+        windowManager.openWindow("notepad", "Notepad", "notepad", singleInstance = false, preferredWidthDp = 490, preferredHeightDp = 335) {
+            ExplorerAndNotepad.buildNotepadView(this, this, it, file)
         }
     }
 
     override fun openBrowser(initialUrl: String?) {
-        windowManager.openWindow("browser", "Desktop Browser", "🌐", singleInstance = false, preferredWidthDp = 620, preferredHeightDp = 390) {
+        windowManager.openWindow("browser", "Desktop Browser", "browser", singleInstance = false, preferredWidthDp = 600, preferredHeightDp = 380) {
             BrowserAndMedia.buildBrowserView(this, it, initialUrl)
         }
     }
 
     override fun openTerminal(initialCommand: String?) {
-        windowManager.openWindow("terminal", "Command Prompt", ">_", singleInstance = false, preferredWidthDp = 530, preferredHeightDp = 340) {
+        windowManager.openWindow("terminal", "Terminal CMD & Shizuku", "terminal", singleInstance = false, preferredWidthDp = 520, preferredHeightDp = 335) {
             ToolsApps.buildTerminalView(this, this, windowManager, initialCommand)
         }
     }
 
     override fun openCalculator() {
-        windowManager.openWindow("calculator", "Calculator", "🧮", singleInstance = true, preferredWidthDp = 320, preferredHeightDp = 360) {
+        windowManager.openWindow("calculator", "Calculator", "calculator", singleInstance = true, preferredWidthDp = 310, preferredHeightDp = 345) {
             ToolsApps.buildCalculatorView(this)
         }
     }
 
     override fun openPaint(imageFile: File?) {
-        windowManager.openWindow("paint", "Paint Studio", "🎨", singleInstance = false, preferredWidthDp = 540, preferredHeightDp = 360) {
-            BrowserAndMedia.buildPaintView(this, it, imageFile)
+        windowManager.openWindow("paint", "Paint Studio", "paint", singleInstance = false, preferredWidthDp = 530, preferredHeightDp = 350) {
+            BrowserAndMedia.buildPaintView(this, this, it, imageFile)
         }
     }
 
     override fun openMediaPlayer(audioFile: File?) {
-        windowManager.openWindow("media", "Media Player", "🎵", singleInstance = true, preferredWidthDp = 440, preferredHeightDp = 310) {
+        windowManager.openWindow("media", "Media Player", "media", singleInstance = true, preferredWidthDp = 430, preferredHeightDp = 300) {
             BrowserAndMedia.buildMediaPlayerView(this, this, it, audioFile)
         }
     }
 
     override fun openTaskManager() {
-        windowManager.openWindow("taskmgr", "Task Manager", "📊", singleInstance = true, preferredWidthDp = 480, preferredHeightDp = 350) {
+        windowManager.openWindow("taskmgr", "Task Manager", "taskmgr", singleInstance = true, preferredWidthDp = 470, preferredHeightDp = 340) {
             ToolsApps.buildTaskManagerView(this, it, windowManager)
         }
     }
 
     override fun openControlPanel() {
-        windowManager.openWindow("control", "Control Panel", "⚙️", singleInstance = true, preferredWidthDp = 520, preferredHeightDp = 370) {
+        windowManager.openWindow("control", "Control Panel", "control", singleInstance = true, preferredWidthDp = 520, preferredHeightDp = 365) {
             ToolsApps.buildControlPanelView(this, prefs, this)
         }
     }
@@ -799,7 +1090,7 @@ class MainActivity : Activity(), DesktopHostCallbacks {
             ExeEmulatorApp.launchExeInWindow(this, prefs, this, windowManager, targetExe)
             return
         }
-        windowManager.openWindow("exe_center", "EXE & Wine Plugin Center", "🍷", singleInstance = true, preferredWidthDp = 560, preferredHeightDp = 380) {
+        windowManager.openWindow("exe_center", "EXE & Wine Plugin Center", "exe_center", singleInstance = true, preferredWidthDp = 540, preferredHeightDp = 365) {
             ExeEmulatorApp.buildExeCenterView(this, prefs, this, windowManager)
         }
     }
@@ -814,17 +1105,16 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     }
 
     override fun openImageFile(file: File) = openPaint(file)
-
     override fun openAudioFile(file: File) = openMediaPlayer(file)
 
     private fun openFolderFloatingWindow(folder: DesktopFolder) {
         windowManager.openWindow(
             appKey = "folder_${folder.id}",
             title = "Folder — ${folder.name}",
-            glyph = "📁",
+            iconId = "folder",
             singleInstance = true,
-            preferredWidthDp = 460,
-            preferredHeightDp = 320
+            preferredWidthDp = 450,
+            preferredHeightDp = 310
         ) { state ->
             val wrap = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -834,68 +1124,216 @@ class MainActivity : Activity(), DesktopHostCallbacks {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            head.addView(UiKit.label(this, "${folder.packages.size} item terdaftar", 11.5f, UiKit.MUTED),
+            head.addView(UiKit.label(this, "${folder.packages.size} item", 11f, UiKit.MUTED),
                 LinearLayout.LayoutParams(0, -2, 1f))
-            head.addView(UiKit.chipButton(this, "✏️ Kelola Isi Folder") {
+            head.addView(UiKit.chipButton(this, "Kelola Isi Folder") {
                 windowManager.closeWindow(state.id)
-                showCreateOrEditFolderDialog(folder)
-            }, LinearLayout.LayoutParams(-2, dp(28)))
+                showCreateOrEditFolderWindow(folder)
+            }, LinearLayout.LayoutParams(-2, dp(26)))
             wrap.addView(head, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
 
             val apps = folder.packages.mapNotNull { appByPkg[it] }
             if (apps.isEmpty()) {
-                wrap.addView(UiKit.label(this, "Folder ini kosong. Klik '✏️ Kelola Isi Folder' untuk menambah aplikasi.", 12f, UiKit.MUTED, maxLines = 3))
+                wrap.addView(UiKit.label(this, "Folder ini kosong. Klik 'Kelola Isi Folder' untuk memilih aplikasi.", 11.5f, UiKit.MUTED, maxLines = 3))
             } else {
                 val tiles = apps.map { a ->
                     val drw: Drawable = if (a.iconBitmap != null) BitmapDrawable(resources, a.iconBitmap)
-                    else UiKit.builtInIcon(this, "apk", Color.rgb(59, 130, 246), Color.rgb(37, 99, 235), "🤖")
-                    desktopTileView(a.label, drw, 38, onClick = { launchAndroidApp(a) }, onLongClick = { showAndroidAppContextMenu(a) })
+                    else VectorIcons.get(this, "explorer", dp(36))
+                    desktopTileView(a.label, drw, 36,
+                        onClick = { launchAndroidApp(a) },
+                        onLongClick = { rx, ry -> showAndroidAppContextMenu(a, rx, ry) })
                 }
                 val sc = ScrollView(this).apply { isFillViewport = true }
-                sc.addView(UiKit.buildGrid(this, 4, 82, tiles))
+                sc.addView(UiKit.buildGrid(this, 4, 78, tiles))
                 wrap.addView(sc, LinearLayout.LayoutParams(-1, 0, 1f))
             }
             wrap
         }
     }
 
-    // ==================== STORAGE PICKERS (EXE, WALLPAPER, AUDIO) ====================
+    // ==================== EXTERNAL ANDROID APP LAUNCH (SHIZUKU + FREEFORM) ====================
+    private fun launchAndroidApp(app: AndroidAppEntry, preferShizukuWindow: Boolean = true) {
+        if (prefs.systemOverlayEnabled && SystemFloatingOverlay.canDraw(this)) {
+            SystemFloatingOverlay.show(this, prefs)
+        }
+
+        val standardLaunch = {
+            try {
+                val dm = resources.displayMetrics
+                val rect = Rect(
+                    (dm.widthPixels * 0.10f).toInt(),
+                    (dm.heightPixels * 0.08f).toInt(),
+                    (dm.widthPixels * 0.90f).toInt(),
+                    (dm.heightPixels * 0.88f).toInt()
+                )
+                val opts = ActivityOptions.makeBasic().setLaunchBounds(rect)
+                try {
+                    val m = ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
+                    m.invoke(opts, 5)
+                } catch (_: Throwable) {
+                }
+                val intent = Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setClassName(app.packageName, app.activityName)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+                startActivity(intent, opts.toBundle())
+            } catch (_: Throwable) {
+                try {
+                    startActivity(
+                        Intent(Intent.ACTION_MAIN)
+                            .addCategory(Intent.CATEGORY_LAUNCHER)
+                            .setClassName(app.packageName, app.activityName)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (_: Throwable) {
+                    showToast("Launcher", "Aplikasi tidak dapat dibuka")
+                }
+            }
+        }
+
+        if (preferShizukuWindow && ShizukuBridge.hasPermission()) {
+            ShizukuBridge.launchAppFreeformViaShizuku(app.packageName, app.activityName) {
+                runOnUiThread { standardLaunch() }
+            }
+        } else {
+            standardLaunch()
+        }
+    }
+
+    private fun showAndroidAppContextMenu(app: AndroidAppEntry, rawX: Float, rawY: Float) {
+        val pkg = app.packageName
+        val pinned = prefs.getPinnedPackages()
+        val desk = prefs.getDesktopPackages()
+        val isPinned = pinned.contains(pkg)
+        val isDesk = desk.contains(pkg)
+
+        overlays.showContextMenu(
+            title = app.label,
+            rawX = rawX,
+            rawY = rawY,
+            items = listOf(
+                "Buka Freeform Window (Shizuku/PC)" to { launchAndroidApp(app, preferShizukuWindow = true) },
+                "Buka Layar Penuh Biasa" to { launchAndroidApp(app, preferShizukuWindow = false) },
+                (if (isPinned) "Lepas Pin dari Taskbar" else "Pin ke Taskbar") to {
+                    if (isPinned) pinned.remove(pkg) else pinned.add(pkg)
+                    prefs.savePinnedPackages(pinned)
+                    renderTaskbar()
+                },
+                (if (isDesk) "Hapus Shortcut Desktop" else "Tambah Shortcut ke Desktop") to {
+                    if (isDesk) desk.remove(pkg) else desk.add(pkg)
+                    prefs.saveDesktopPackages(desk)
+                    renderDesktopSurface()
+                },
+                "Masukkan ke Folder Desktop…" to {
+                    val folders = prefs.getFolders()
+                    val fItems = folders.map { f ->
+                        f.name to {
+                            if (!f.packages.contains(pkg)) f.packages.add(pkg)
+                            prefs.saveFolders(folders)
+                            renderDesktopSurface()
+                            showToast("Folder", "Ditambahkan ke ${f.name}")
+                        }
+                    } + ("+ Buat Folder Baru" to {
+                        val nf = DesktopFolder(UUID.randomUUID().toString(), "Folder Baru", mutableListOf(pkg))
+                        folders.add(nf)
+                        prefs.saveFolders(folders)
+                        renderDesktopSurface()
+                        showCreateOrEditFolderWindow(nf)
+                    })
+                    overlays.showContextMenu("Pilih Folder Tujuan", fItems)
+                },
+                "Info Aplikasi Sistem" to {
+                    try {
+                        startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                .setData(Uri.fromParts("package", pkg, null))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (_: Throwable) {}
+                },
+                "Uninstall Aplikasi" to {
+                    try {
+                        startActivity(
+                            Intent(Intent.ACTION_DELETE)
+                                .setData(Uri.fromParts("package", pkg, null))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (_: Throwable) {}
+                }
+            )
+        )
+    }
+
+    private fun showDesktopShortcutPickerWindow() {
+        if (installedApps.isEmpty()) {
+            showToast("Desktop", "Daftar aplikasi sedang dimuat…")
+            return
+        }
+        overlays.showMultiPicker(
+            title = "Pilih Shortcut Aplikasi di Desktop",
+            items = installedApps.map { it.packageName to it.label },
+            initialChecked = prefs.getDesktopPackages().toSet(),
+            onSave = { selected, _ ->
+                prefs.saveDesktopPackages(selected.toList())
+                renderDesktopSurface()
+            }
+        )
+    }
+
+    private fun showCreateOrEditFolderWindow(existing: DesktopFolder?) {
+        overlays.showMultiPicker(
+            title = if (existing == null) "Buat Folder Desktop Baru" else "Kelola Folder Desktop",
+            items = installedApps.map { it.packageName to it.label },
+            initialChecked = (existing?.packages ?: emptyList()).toSet(),
+            editableFolderName = existing?.name ?: "Folder Baru",
+            dangerButton = existing?.let {
+                "Hapus Folder" to {
+                    prefs.saveFolders(prefs.getFolders().filterNot { f -> f.id == it.id })
+                    renderDesktopSurface()
+                }
+            },
+            onSave = { selected, folderName ->
+                val all = prefs.getFolders()
+                if (existing == null) {
+                    all.add(DesktopFolder(UUID.randomUUID().toString(), folderName, selected.toMutableList()))
+                } else {
+                    all.find { it.id == existing.id }?.let {
+                        it.name = folderName
+                        it.packages.clear()
+                        it.packages.addAll(selected)
+                    }
+                }
+                prefs.saveFolders(all)
+                renderDesktopSurface()
+            }
+        )
+    }
+
+    // ==================== FILE & MEDIA PICKERS ====================
     override fun pickExternalExeFile() {
         try {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "*/*"
-            }
             @Suppress("DEPRECATION")
-            startActivityForResult(intent, REQ_PICK_EXE)
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_PICK_EXE)
         } catch (t: Throwable) {
-            Toast.makeText(this, "File picker tidak tersedia: ${t.message}", Toast.LENGTH_SHORT).show()
+            showToast("File Picker", "Tidak tersedia: ${t.message}")
         }
     }
 
     override fun pickCustomWallpaper() {
         try {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "image/*"
-            }
             @Suppress("DEPRECATION")
-            startActivityForResult(intent, REQ_PICK_WALLPAPER)
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_PICK_WALLPAPER)
         } catch (t: Throwable) {
-            Toast.makeText(this, "Galeri tidak tersedia: ${t.message}", Toast.LENGTH_SHORT).show()
+            showToast("Galeri", "Tidak tersedia: ${t.message}")
         }
     }
 
     override fun pickAudioFromStorage() {
         try {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "audio/*"
-            }
             @Suppress("DEPRECATION")
-            startActivityForResult(intent, REQ_PICK_AUDIO)
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*"), REQ_PICK_AUDIO)
         } catch (t: Throwable) {
-            Toast.makeText(this, "Pemilih audio tidak tersedia: ${t.message}", Toast.LENGTH_SHORT).show()
+            showToast("Audio Picker", "Tidak tersedia: ${t.message}")
         }
     }
 
@@ -907,11 +1345,7 @@ class MainActivity : Activity(), DesktopHostCallbacks {
                 val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 if (idx >= 0) cursor.getString(idx) else null
             } else null
-        } catch (_: Throwable) {
-            null
-        } finally {
-            cursor?.close()
-        }
+        } catch (_: Throwable) { null } finally { cursor?.close() }
     }
 
     @Deprecated("Deprecated in Java")
@@ -923,492 +1357,56 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         when (requestCode) {
             REQ_PICK_EXE -> {
                 try {
-                    val rawName = queryDisplayName(uri) ?: "Imported_Program.exe"
+                    val rawName = queryDisplayName(uri) ?: "Program.exe"
                     val safeName = if (rawName.contains('.')) rawName else "$rawName.exe"
                     val dest = File(VirtualDrive.installersDir(this), safeName)
-                    contentResolver.openInputStream(uri)?.use { input ->
-                        FileOutputStream(dest).use { out -> input.copyTo(out) }
-                    }
+                    contentResolver.openInputStream(uri)?.use { inp -> FileOutputStream(dest).use { inp.copyTo(it) } }
                     val entry = ExeEmulatorApp.installExeToProgramFiles(this, prefs, dest)
                     refreshDesktopUI()
-                    Toast.makeText(this, "Berhasil import & install: ${entry.title}", Toast.LENGTH_SHORT).show()
+                    showToast("EXE Terpasang", entry.title)
                     ExeEmulatorApp.launchExeInWindow(this, prefs, this, windowManager, File(entry.exePath))
                 } catch (t: Throwable) {
-                    Toast.makeText(this, "Gagal import file: ${t.message}", Toast.LENGTH_LONG).show()
+                    showToast("Import Gagal", t.message ?: "Error")
                 }
             }
             REQ_PICK_WALLPAPER -> {
                 try {
-                    val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, boundsOpts) }
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
                     var sample = 1
-                    while (boundsOpts.outWidth / sample > 1920 || boundsOpts.outHeight / sample > 1920) {
-                        sample *= 2
+                    while (bounds.outWidth / sample > 1920 || bounds.outHeight / sample > 1920) sample *= 2
+                    val bmp = contentResolver.openInputStream(uri)?.use {
+                        BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
                     }
-                    val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
-                    val bmp = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) }
                     if (bmp != null) {
-                        FileOutputStream(prefs.customWallpaperFile()).use { out ->
-                            bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                        }
+                        FileOutputStream(prefs.customWallpaperFile()).use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
                         prefs.useCustomWallpaper = true
                         refreshDesktopUI()
-                        Toast.makeText(this, "Wallpaper desktop diperbarui!", Toast.LENGTH_SHORT).show()
+                        showToast("Wallpaper", "Wallpaper desktop diperbarui!")
                     }
                 } catch (t: Throwable) {
-                    Toast.makeText(this, "Gagal memuat gambar: ${t.message}", Toast.LENGTH_SHORT).show()
+                    showToast("Wallpaper", "Gagal memuat gambar")
                 }
             }
             REQ_PICK_AUDIO -> {
                 try {
                     val name = queryDisplayName(uri) ?: "Track.mp3"
                     val dest = File(VirtualDrive.downloadsDir(this), name)
-                    contentResolver.openInputStream(uri)?.use { input ->
-                        FileOutputStream(dest).use { out -> input.copyTo(out) }
-                    }
+                    contentResolver.openInputStream(uri)?.use { inp -> FileOutputStream(dest).use { inp.copyTo(it) } }
                     windowManager.openWindows().find { it.appKey == "media" }?.let { windowManager.closeWindow(it.id) }
                     openMediaPlayer(dest)
-                } catch (t: Throwable) {
-                    Toast.makeText(this, "Gagal membuka audio: ${t.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    // ==================== START MENU & QUICK PANEL ====================
-    private fun showStartMenu(focusSearch: Boolean) {
-        val theme = prefs.currentTheme
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = UiKit.gradientRounded(this@MainActivity, theme.panelColors, Color.argb(75, 255, 255, 255), 20)
-        }
-
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        header.addView(UiKit.label(this, "⊞ RuangDroid Start", 17f, UiKit.INK, bold = true),
-            LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(UiKit.chipButton(this, "⚙️ Settings PC") {
-            dialog.dismiss()
-            openControlPanel()
-        }, LinearLayout.LayoutParams(-2, dp(28)))
-        panel.addView(header)
-
-        val searchBox = EditText(this).apply {
-            hint = "Ketik nama aplikasi PC atau Android…"
-            setHintTextColor(UiKit.MUTED)
-            setTextColor(UiKit.INK)
-            textSize = 13.5f
-            setSingleLine(true)
-            background = UiKit.rounded(this@MainActivity, Color.argb(38, 215, 229, 255), 12)
-            setPadding(dp(12), 0, dp(12), 0)
-        }
-        panel.addView(searchBox, LinearLayout.LayoutParams(-1, dp(38)).apply {
-            topMargin = dp(8); bottomMargin = dp(8)
-        })
-
-        val scroll = ScrollView(this).apply { overScrollMode = View.OVER_SCROLL_NEVER }
-        val gridHolder = FrameLayout(this)
-        scroll.addView(gridHolder)
-        val menuH = (resources.displayMetrics.heightPixels * 0.54f).toInt().coerceAtLeast(dp(200))
-        panel.addView(scroll, LinearLayout.LayoutParams(-1, menuH))
-
-        val cols = if (isPcLandscape()) 5 else 4
-
-        fun populate(q: String) {
-            gridHolder.removeAllViews()
-            val tiles = mutableListOf<View>()
-
-            // Built-in PC Apps first
-            BuiltInApps.all.filter { it.title.contains(q, ignoreCase = true) || it.subtitle.contains(q, ignoreCase = true) }
-                .forEach { bApp ->
-                    tiles.add(
-                        desktopTileView(bApp.title, bApp.icon(this), 38,
-                            onClick = { dialog.dismiss(); launchBuiltInByKey(bApp.key) },
-                            onLongClick = { dialog.dismiss(); launchBuiltInByKey(bApp.key) })
-                    )
-                }
-
-            // Installed Android Apps
-            installedApps.filter { it.label.contains(q, ignoreCase = true) }
-                .forEach { app ->
-                    val drw: Drawable = if (app.iconBitmap != null) BitmapDrawable(resources, app.iconBitmap)
-                    else UiKit.builtInIcon(this, "apk", Color.rgb(59, 130, 246), Color.rgb(37, 99, 235), "🤖")
-                    tiles.add(
-                        desktopTileView(app.label, drw, 38,
-                            onClick = { dialog.dismiss(); launchAndroidApp(app) },
-                            onLongClick = { dialog.dismiss(); showAndroidAppContextMenu(app) })
-                    )
-                }
-
-            gridHolder.addView(UiKit.buildGrid(this, cols, 82, tiles))
-        }
-        populate("")
-
-        searchBox.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = populate(s?.toString().orEmpty())
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
-
-        dialog.setContentView(panel)
-        val w = if (isPcLandscape()) dp(480) else (resources.displayMetrics.widthPixels * 0.94f).toInt()
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            val lp = attributes
-            lp.gravity = Gravity.BOTTOM or Gravity.START
-            lp.x = dp(12)
-            lp.y = dp(62)
-            lp.width = w
-            lp.height = WindowManager.LayoutParams.WRAP_CONTENT
-            attributes = lp
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setDimAmount(0.35f)
-            if (focusSearch) setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
-        }
-        dialog.show()
-        if (focusSearch) searchBox.requestFocus()
-    }
-
-    private fun showQuickSettingsPanel() {
-        val theme = prefs.currentTheme
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = UiKit.gradientRounded(this@MainActivity, theme.panelColors, Color.argb(75, 255, 255, 255), 20)
-        }
-
-        val head = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        head.addView(UiKit.label(this, "🎛️ Quick Action Center", 15.5f, UiKit.INK, bold = true),
-            LinearLayout.LayoutParams(0, -2, 1f))
-        val (bat, chg) = batteryInfo()
-        head.addView(UiKit.label(this, "${if (chg) "⚡" else "🔋"} $bat%", 12f, theme.accent, bold = true))
-        card.addView(head, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-
-        fun qTile(title: String, sub: String, active: Boolean, action: () -> Unit): View = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-            val bg = if (active) Color.argb(95, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent))
-            else Color.argb(32, 215, 229, 255)
-            background = UiKit.strokeRounded(this@MainActivity, bg, Color.argb(if (active) 130 else 40, 255, 255, 255), 12)
-            setOnClickListener { action() }
-            addView(UiKit.label(this@MainActivity, title, 11.5f, UiKit.INK, bold = true))
-            addView(UiKit.label(this@MainActivity, sub, 9.5f, if (active) UiKit.INK else UiKit.MUTED))
-        }
-
-        val tiles = listOf(
-            qTile("📶 Wi-Fi", "Jaringan", true) { dialog.dismiss(); openSystemAction(Settings.ACTION_WIFI_SETTINGS) },
-            qTile("🔵 Bluetooth", "Perangkat", false) { dialog.dismiss(); openSystemAction(Settings.ACTION_BLUETOOTH_SETTINGS) },
-            qTile("🖥️ Mode PC", if (prefs.landscapeLock) "Landscape" else "Auto", prefs.landscapeLock) {
-                prefs.landscapeLock = !prefs.landscapeLock
-                dialog.dismiss()
-                refreshDesktopUI()
-            },
-            qTile("⛶ Fullscreen", if (prefs.immersiveMode) "Aktif" else "Standar", prefs.immersiveMode) {
-                prefs.immersiveMode = !prefs.immersiveMode
-                dialog.dismiss()
-                refreshDesktopUI()
-            },
-            qTile("🎨 Tema", theme.name, false) {
-                prefs.cycleTheme()
-                dialog.dismiss()
-                refreshDesktopUI()
-                showQuickSettingsPanel()
-            },
-            qTile("☀️ Layar", "Brightness", false) { dialog.dismiss(); openSystemAction(Settings.ACTION_DISPLAY_SETTINGS) }
-        )
-        card.addView(UiKit.buildGrid(this, 3, 52, tiles), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-
-        // Media Volume Slider
-        try {
-            val audio = getSystemService(AUDIO_SERVICE) as AudioManager
-            val maxV = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-            val curV = audio.getStreamVolume(AudioManager.STREAM_MUSIC).coerceIn(0, maxV)
-            val volRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                background = UiKit.rounded(this@MainActivity, Color.argb(28, 255, 255, 255), 12)
-                setPadding(dp(10), dp(4), dp(10), dp(4))
-            }
-            volRow.addView(UiKit.label(this, "🔊", 14f))
-            volRow.addView(SeekBar(this).apply {
-                max = maxV
-                progress = curV
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                        if (fromUser) audio.setStreamVolume(AudioManager.STREAM_MUSIC, p, 0)
-                    }
-                    override fun onStartTrackingTouch(sb: SeekBar?) = Unit
-                    override fun onStopTrackingTouch(sb: SeekBar?) = Unit
-                })
-            }, LinearLayout.LayoutParams(0, -2, 1f))
-            card.addView(volRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-        } catch (_: Throwable) {
-        }
-
-        card.addView(UiKit.label(this, "${memorySummary()}  ·  ${storageSummary()}", 10.5f, UiKit.MUTED),
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-
-        val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        foot.addView(UiKit.chipButton(this, "⚙️ Control Panel PC") {
-            dialog.dismiss(); openControlPanel()
-        }, LinearLayout.LayoutParams(0, dp(32), 1f).apply { rightMargin = dp(6) })
-        foot.addView(UiKit.chipButton(this, "📱 Setelan Android") {
-            dialog.dismiss(); openSystemAction(Settings.ACTION_SETTINGS)
-        }, LinearLayout.LayoutParams(0, dp(32), 1f))
-        card.addView(foot)
-
-        dialog.setContentView(card)
-        val w = if (isPcLandscape()) dp(355) else (resources.displayMetrics.widthPixels * 0.94f).toInt()
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            val lp = attributes
-            lp.gravity = Gravity.BOTTOM or Gravity.END
-            lp.x = dp(12)
-            lp.y = dp(62)
-            lp.width = w
-            lp.height = WindowManager.LayoutParams.WRAP_CONTENT
-            attributes = lp
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setDimAmount(0.35f)
-        }
-        dialog.show()
-    }
-
-    // ==================== EXTERNAL ANDROID APPS & FOLDERS ====================
-    private fun launchAndroidApp(app: AndroidAppEntry, forceFreeform: Boolean = false) {
-        val baseIntent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setClassName(app.packageName, app.activityName)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-        if (prefs.freeformExternalApps || forceFreeform) {
-            try {
-                val dm = resources.displayMetrics
-                val rect = Rect(
-                    (dm.widthPixels * 0.12f).toInt(),
-                    (dm.heightPixels * 0.08f).toInt(),
-                    (dm.widthPixels * 0.88f).toInt(),
-                    (dm.heightPixels * 0.86f).toInt()
-                )
-                val opts = ActivityOptions.makeBasic().setLaunchBounds(rect)
-                // Attempt Android freeform windowingMode = 5 when supported by device/ROM
-                try {
-                    val m = ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
-                    m.invoke(opts, 5)
                 } catch (_: Throwable) {
-                }
-                val freeformIntent = Intent(baseIntent).addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-                startActivity(freeformIntent, opts.toBundle())
-                return
-            } catch (_: Throwable) {
-            }
-        }
-
-        try {
-            startActivity(baseIntent)
-        } catch (_: Throwable) {
-            Toast.makeText(this, "Aplikasi tidak bisa dibuka", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun showAndroidAppContextMenu(app: AndroidAppEntry) {
-        val pkg = app.packageName
-        val pinned = prefs.getPinnedPackages()
-        val desk = prefs.getDesktopPackages()
-        val isPinned = pinned.contains(pkg)
-        val isDesk = desk.contains(pkg)
-
-        val items = arrayOf(
-            "🪟 Buka Mode Freeform Window",
-            if (isPinned) "📌 Lepas Pin dari Taskbar" else "📌 Pin ke Taskbar",
-            if (isDesk) "🖥️ Hapus dari Desktop" else "🖥️ Tambah ke Desktop",
-            "📁 Masukkan ke Folder…",
-            "ℹ️ Info Aplikasi Android",
-            "🗑️ Uninstall Aplikasi"
-        )
-        AlertDialog.Builder(this)
-            .setTitle(app.label)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> launchAndroidApp(app, forceFreeform = true)
-                    1 -> {
-                        if (isPinned) pinned.remove(pkg) else pinned.add(pkg)
-                        prefs.savePinnedPackages(pinned)
-                        renderTaskbar()
-                    }
-                    2 -> {
-                        if (isDesk) desk.remove(pkg) else desk.add(pkg)
-                        prefs.saveDesktopPackages(desk)
-                        renderDesktopSurface()
-                    }
-                    3 -> {
-                        val folders = prefs.getFolders()
-                        val names = (folders.map { "📁 ${it.name}" } + "➕ Folder Baru…").toTypedArray()
-                        AlertDialog.Builder(this)
-                            .setTitle("Pilih Folder")
-                            .setItems(names) { _, idx ->
-                                if (idx == folders.size) {
-                                    val nf = DesktopFolder(UUID.randomUUID().toString(), "Folder Baru", mutableListOf(pkg))
-                                    folders.add(nf)
-                                    prefs.saveFolders(folders)
-                                    renderDesktopSurface()
-                                    showCreateOrEditFolderDialog(nf)
-                                } else {
-                                    if (!folders[idx].packages.contains(pkg)) folders[idx].packages.add(pkg)
-                                    prefs.saveFolders(folders)
-                                    renderDesktopSurface()
-                                }
-                            }
-                            .show()
-                    }
-                    4 -> {
-                        try {
-                            startActivity(
-                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                    .setData(Uri.fromParts("package", pkg, null))
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
-                        } catch (_: Throwable) {
-                        }
-                    }
-                    5 -> {
-                        try {
-                            startActivity(
-                                Intent(Intent.ACTION_DELETE)
-                                    .setData(Uri.fromParts("package", pkg, null))
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
-                        } catch (_: Throwable) {
-                        }
-                    }
+                    showToast("Media Player", "Gagal memuat audio")
                 }
             }
-            .show()
-    }
-
-    private fun showDesktopShortcutPicker() {
-        if (installedApps.isEmpty()) {
-            Toast.makeText(this, "Daftar aplikasi sedang dimuat…", Toast.LENGTH_SHORT).show()
-            return
         }
-        val selected = prefs.getDesktopPackages().toMutableSet()
-        val labels = installedApps.map { it.label }.toTypedArray()
-        val checked = BooleanArray(installedApps.size) { selected.contains(installedApps[it].packageName) }
-
-        AlertDialog.Builder(this)
-            .setTitle("Pilih Aplikasi Android di Desktop")
-            .setMultiChoiceItems(labels, checked) { _, idx, isChecked ->
-                val p = installedApps[idx].packageName
-                if (isChecked) selected.add(p) else selected.remove(p)
-            }
-            .setPositiveButton("Simpan") { _, _ ->
-                prefs.saveDesktopPackages(selected.toList())
-                renderDesktopSurface()
-            }
-            .setNegativeButton("Batal", null)
-            .show()
-    }
-
-    private fun showCreateOrEditFolderDialog(existing: DesktopFolder?) {
-        val theme = prefs.currentTheme
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = UiKit.gradientRounded(this@MainActivity, theme.panelColors, Color.argb(75, 255, 255, 255), 18)
-        }
-        panel.addView(UiKit.label(this, if (existing == null) "Buat Folder Desktop" else "Kelola Folder", 16f, UiKit.INK, bold = true))
-
-        val nameInput = EditText(this).apply {
-            hint = "Nama Folder"
-            setText(existing?.name ?: "")
-            setHintTextColor(UiKit.MUTED)
-            setTextColor(UiKit.INK)
-            setSingleLine(true)
-            background = UiKit.rounded(this@MainActivity, Color.argb(38, 255, 255, 255), 10)
-            setPadding(dp(12), 0, dp(12), 0)
-        }
-        panel.addView(nameInput, LinearLayout.LayoutParams(-1, dp(38)).apply {
-            topMargin = dp(8); bottomMargin = dp(8)
-        })
-
-        val selected = (existing?.packages ?: emptyList()).toMutableSet()
-        val sc = ScrollView(this)
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        for (app in installedApps) {
-            col.addView(CheckBox(this).apply {
-                text = app.label
-                setTextColor(UiKit.INK)
-                isChecked = selected.contains(app.packageName)
-                setOnCheckedChangeListener { _, chk ->
-                    if (chk) selected.add(app.packageName) else selected.remove(app.packageName)
-                }
-            })
-        }
-        sc.addView(col)
-        panel.addView(sc, LinearLayout.LayoutParams(-1, dp(180)).apply { bottomMargin = dp(10) })
-
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-        }
-        if (existing != null) {
-            row.addView(UiKit.chipButton(this, "🗑️ Hapus", Color.argb(130, 220, 38, 38)) {
-                prefs.saveFolders(prefs.getFolders().filterNot { it.id == existing.id })
-                dialog.dismiss()
-                renderDesktopSurface()
-            }, LinearLayout.LayoutParams(-2, dp(32)).apply { rightMargin = dp(6) })
-        }
-        row.addView(UiKit.chipButton(this, "Batal") { dialog.dismiss() },
-            LinearLayout.LayoutParams(-2, dp(32)).apply { rightMargin = dp(6) })
-        row.addView(UiKit.chipButton(this, "💾 Simpan", Color.argb(120, 37, 99, 235)) {
-            val nm = nameInput.text?.toString()?.trim().orEmpty().ifEmpty { "Folder" }
-            val all = prefs.getFolders()
-            if (existing == null) {
-                all.add(DesktopFolder(UUID.randomUUID().toString(), nm, selected.toMutableList()))
-            } else {
-                all.find { it.id == existing.id }?.let {
-                    it.name = nm
-                    it.packages.clear()
-                    it.packages.addAll(selected)
-                }
-            }
-            prefs.saveFolders(all)
-            dialog.dismiss()
-            renderDesktopSurface()
-        }, LinearLayout.LayoutParams(-2, dp(32)))
-
-        panel.addView(row)
-        dialog.setContentView(panel)
-        val w = if (isPcLandscape()) dp(430) else (resources.displayMetrics.widthPixels * 0.92f).toInt()
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            setLayout(w, WindowManager.LayoutParams.WRAP_CONTENT)
-            setGravity(Gravity.CENTER)
-        }
-        dialog.show()
     }
 
     private fun openSystemAction(action: String) {
         try {
             startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: Throwable) {
-            Toast.makeText(this, "Pengaturan tidak tersedia", Toast.LENGTH_SHORT).show()
+            showToast("Sistem", "Menu pengaturan tidak ditemukan")
         }
     }
 }

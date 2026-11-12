@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.example.ruangdroid"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "2.0.0"
     }
 
     compileOptions {
@@ -29,11 +29,10 @@ android {
         abortOnError = false
     }
 
-    // Debug-key signing keeps CI release APKs installable for testing.
-    // Replace this with a private release keystore before public distribution.
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("debug")
         }
     }

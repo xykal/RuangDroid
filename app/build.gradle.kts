@@ -18,8 +18,8 @@ android {
         applicationId = "dev.xykal.hyperdex"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "4.0.0"
+        versionCode = 6
+        versionName = "5.0.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")

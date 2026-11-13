@@ -238,8 +238,21 @@ object SystemFloatingOverlay {
             hide()
         }, LinearLayout.LayoutParams(-2, dp(30)))
 
-        miniWindow.addView(UiKit.label(appCtx, "HyperDeX Floating Overlay Window", 11.5f, theme.accent, bold = true),
+        val vKeyRow = LinearLayout(appCtx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, dp(6))
+        }
+        listOf("ESC" to 111, "TAB" to 61, "SPC" to 62, "ENT" to 66).forEachIndexed { idx, (lbl, code) ->
+            vKeyRow.addView(UiKit.chipButton(appCtx, lbl, Color.argb(65, 99, 102, 241)) {
+                if (ShizukuBridge.hasPermission()) {
+                    ShizukuBridge.runPrivilegedAsync("input keyevent $code") { _, _ -> }
+                }
+            }, LinearLayout.LayoutParams(0, dp(26), 1f).apply { if (idx < 3) rightMargin = dp(4) })
+        }
+
+        miniWindow.addView(UiKit.label(appCtx, "HyperDeX Floating Gaming & PC HUD", 11.5f, theme.accent, bold = true),
             LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+        miniWindow.addView(vKeyRow, LinearLayout.LayoutParams(-1, -2))
         miniWindow.addView(noteArea, LinearLayout.LayoutParams(dp(230), -2).apply { bottomMargin = dp(8) })
         miniWindow.addView(quickActions, LinearLayout.LayoutParams(-1, -2))
 

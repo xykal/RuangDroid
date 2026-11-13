@@ -128,6 +128,27 @@ object ExplorerAndNotepad {
                             } else {
                                 when (ext) {
                                     "exe", "msi", "com" -> host.openExeFile(f)
+                                    "zip" -> {
+                                        host.overlays.showContextMenu(
+                                            title = "Arsip ZIP — ${f.name}",
+                                            items = listOf(
+                                                "Inspeksi Isi .ZIP (Rust Engine)" to {
+                                                    val info = NativeCore.safeInspectZip(f)
+                                                    host.overlays.showInputPrompt("Isi Arsip (${f.name})", info, "", "Tutup") {}
+                                                },
+                                                "Ekstrak .ZIP di Folder Ini" to {
+                                                    try {
+                                                        val outFolder = File(currentDir, f.nameWithoutExtension.ifEmpty { "Extracted" }).apply { mkdirs() }
+                                                        val count = NativeCore.extractZipSafe(f, outFolder)
+                                                        renderDir()
+                                                        host.showToast("ZIP Extractor", "$count file diekstrak ke ${outFolder.name}")
+                                                    } catch (t: Throwable) {
+                                                        host.showToast("ZIP Error", t.message ?: "Gagal ekstrak")
+                                                    }
+                                                }
+                                            )
+                                        )
+                                    }
                                     "bat", "cmd", "sh" -> host.openBatchScript(f)
                                     "png", "jpg", "jpeg", "webp", "bmp" -> host.openImageFile(f)
                                     "mp3", "wav", "ogg", "m4a" -> host.openAudioFile(f)
@@ -141,6 +162,15 @@ object ExplorerAndNotepad {
                                 "Salin (Copy)" to {
                                     clipboardFile = f
                                     host.showToast("Clipboard Explorer", "Disalin: ${f.name}")
+                                },
+                                "Kompres ke Arsip .ZIP" to {
+                                    val destZip = File(currentDir, "${f.name}.zip")
+                                    if (NativeCore.compressToZip(f, destZip)) {
+                                        renderDir()
+                                        host.showToast("ZIP Archiver", "Tersimpan: ${destZip.name}")
+                                    } else {
+                                        host.showToast("ZIP Error", "Gagal membuat arsip ZIP")
+                                    }
                                 }
                             )
                             if (f.isFile) {

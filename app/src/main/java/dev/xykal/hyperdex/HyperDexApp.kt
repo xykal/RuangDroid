@@ -182,7 +182,19 @@ object VirtualDrive {
 
         seedPortableExe(File(inst, "Minesweeper_XP.exe"), "minesweeper", "Minesweeper Classic PC", x64 = false)
         seedPortableExe(File(inst, "Arkanoid_DX.exe"), "arkanoid", "Arkanoid Breakout DX", x64 = true)
+        seedPortableExe(File(inst, "SpaceShooter_DX.exe"), "spaceshooter", "Neon Space Shooter DX", x64 = true)
         seedPortableExe(File(inst, "WinCalc_Sci.exe"), "calculator", "Windows Scientific Calc", x64 = true)
+
+        val setupLinux = File(inst, "Setup_Termux_Box64_X11.sh")
+        if (!setupLinux.exists()) {
+            setupLinux.writeText(
+                """
+                #!/data/data/com.termux/files/usr/bin/bash
+                pkg update -y && pkg install -y x11-repo tur-repo proot-distro pulseaudio termux-x11-nightly
+                echo "[HyperDeX] Termux X11 + Proot-Distro siap! Jalankan: termux-x11 :0 &"
+                """.trimIndent()
+            )
+        }
 
         val preInstalled = File(pf, "Minesweeper/Minesweeper_XP.exe")
         if (!preInstalled.exists()) {

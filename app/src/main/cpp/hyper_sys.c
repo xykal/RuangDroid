@@ -8,12 +8,20 @@
 #include <unistd.h>
 
 /* ============================================================================
- * libhyper_sys_c.so — Pure C11 Native Kernel Telemetry, Anti-Clone Process
- * Inspector, CRC32 / FNV-1a 64-bit File Checksum & CPU Micro-Benchmark Engine
+ * libhyper_sys_c.so — Pure C11 Native Kernel Telemetry, Direct APK V2/V3 +
+ * classes.dex ZIP Central Directory Inspector, Anti-Hook/Cloner Scanner & Bench
  * ============================================================================ */
 
 static uint64_t g_prev_total_jiffies = 0;
 static uint64_t g_prev_idle_jiffies = 0;
+
+static uint16_t rd_u16_le(const uint8_t* p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static uint32_t rd_u32_le(const uint8_t* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
 
 static double read_cpu_usage_percent(void) {
     FILE* fp = fopen("/proc/stat", "r");
@@ -114,7 +122,7 @@ Java_dev_xykal_hyperdex_NativeCore_cReadKernelTelemetry(JNIEnv* env, jclass claz
 
     char out[1200];
     snprintf(out, sizeof(out),
-             "Engine       : libhyper_sys_c.so (Pure C11 POSIX/Kernel)\n"
+             "Engine       : libhyper_sys_c.so (Pure C11 POSIX/Kernel v5.0)\n"
              "CPU Load     : %.1f%% (%ld Cores)\n"
              "Core Clocks  : %s\n"
              "Physical RAM : %.2f GB used / %.2f GB total (Cache %.0f MB)\n"
@@ -140,7 +148,6 @@ Java_dev_xykal_hyperdex_NativeCore_cVerifyProcessEnv(JNIEnv* env, jclass clazz, 
     const char* exp_pkg = (*env)->GetStringUTFChars(env, expectedPkg, NULL);
     if (!exp_pkg) return (*env)->NewStringUTF(env, "ERR|alloc");
 
-    /* 1. Verify /proc/self/cmdline matches dev.xykal.hyperdex (detects AppCloner / VirtualApp / DualApp) */
     char cmdline[256] = {0};
     FILE* cfp = fopen("/proc/self/cmdline", "rb");
     if (cfp) {
@@ -151,7 +158,6 @@ Java_dev_xykal_hyperdex_NativeCore_cVerifyProcessEnv(JNIEnv* env, jclass clazz, 
 
     int pkg_match = 1;
     if (cmdline[0] != '\0') {
-        /* Allow dev.xykal.hyperdex or dev.xykal.hyperdex:subproc, reject foreign host process */
         size_t elen = strlen(exp_pkg);
         if (strncmp(cmdline, exp_pkg, elen) != 0 ||
             (cmdline[elen] != '\0' && cmdline[elen] != ':')) {
@@ -159,7 +165,6 @@ Java_dev_xykal_hyperdex_NativeCore_cVerifyProcessEnv(JNIEnv* env, jclass clazz, 
         }
     }
 
-    /* 2. Check TracerPid in /proc/self/status */
     int tracer_pid = 0;
     FILE* sfp = fopen("/proc/self/status", "r");
     if (sfp) {
@@ -170,19 +175,23 @@ Java_dev_xykal_hyperdex_NativeCore_cVerifyProcessEnv(JNIEnv* env, jclass clazz, 
         fclose(sfp);
     }
 
-    /* 3. Inspect /proc/self/maps for dynamic binary instrumentation / cloner engines */
     int frida_found = 0;
+    int hook_found = 0;
     int cloner_found = 0;
     FILE* mapfp = fopen("/proc/self/maps", "r");
     if (mapfp) {
         char line[512];
         while (fgets(line, sizeof(line), mapfp)) {
-            if (strstr(line, "frida-agent") || strstr(line, "frida-gadget")) {
+            if (strstr(line, "frida-agent") || strstr(line, "frida-gadget") || strstr(line, "gum-js-loop")) {
                 frida_found = 1;
+            }
+            if (strstr(line, "libdobby.so") || strstr(line, "libsubstrate.so")) {
+                hook_found = 1;
             }
             if (strstr(line, "com.applisto.appcloner") ||
                 strstr(line, "io.va.exposed") ||
-                strstr(line, "com.lody.virtual")) {
+                strstr(line, "com.lody.virtual") ||
+                strstr(line, "dkplugin")) {
                 cloner_found = 1;
             }
         }
@@ -190,18 +199,124 @@ Java_dev_xykal_hyperdex_NativeCore_cVerifyProcessEnv(JNIEnv* env, jclass clazz, 
     }
 
     char result[512];
-    const char* status = (!pkg_match || cloner_found) ? "CLONE_DETECTED" : "OK";
+    const char* status = (!pkg_match || cloner_found || frida_found) ? "CLONE_DETECTED" : "OK";
     snprintf(result, sizeof(result),
-             "%s|cmdline=%s|pkg_match=%d|tracer=%d|frida=%d|cloner=%d",
+             "%s|cmdline=%s|pkg_match=%d|tracer=%d|frida=%d|hook=%d|cloner=%d",
              status,
              cmdline[0] ? cmdline : "unknown",
              pkg_match,
              tracer_pid,
              frida_found,
+             hook_found,
              cloner_found);
 
     (*env)->ReleaseStringUTFChars(env, expectedPkg, exp_pkg);
     return (*env)->NewStringUTF(env, result);
+}
+
+/* Direct C11 APK ZIP Central Directory + APK Sig Block 42 + classes.dex CRC32 Verifier */
+JNIEXPORT jstring JNICALL
+Java_dev_xykal_hyperdex_NativeCore_cInspectApkIntegrity(JNIEnv* env, jclass clazz, jstring apkPath) {
+    const char* path = (*env)->GetStringUTFChars(env, apkPath, NULL);
+    if (!path) return (*env)->NewStringUTF(env, "ERR|null_path");
+
+    FILE* fp = fopen(path, "rb");
+    (*env)->ReleaseStringUTFChars(env, apkPath, path);
+    if (!fp) return (*env)->NewStringUTF(env, "ERR|open_failed");
+
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fclose(fp);
+        return (*env)->NewStringUTF(env, "ERR|seek_failed");
+    }
+    long file_sz = ftell(fp);
+    if (file_sz < 64) {
+        fclose(fp);
+        return (*env)->NewStringUTF(env, "TAMPERED|apk_too_small");
+    }
+
+    long tail_len = (file_sz < 65558L) ? file_sz : 65558L;
+    uint8_t* tail = (uint8_t*)malloc((size_t)tail_len);
+    if (!tail) {
+        fclose(fp);
+        return (*env)->NewStringUTF(env, "ERR|oom");
+    }
+
+    fseek(fp, file_sz - tail_len, SEEK_SET);
+    size_t got = fread(tail, 1, (size_t)tail_len, fp);
+
+    long eocd_pos = -1;
+    for (long i = (long)got - 22; i >= 0; i--) {
+        if (tail[i] == 0x50 && tail[i + 1] == 0x4B && tail[i + 2] == 0x05 && tail[i + 3] == 0x06) {
+            eocd_pos = i;
+            break;
+        }
+    }
+    if (eocd_pos < 0) {
+        free(tail);
+        fclose(fp);
+        return (*env)->NewStringUTF(env, "TAMPERED|missing_eocd");
+    }
+
+    uint16_t cd_entries = rd_u16_le(tail + eocd_pos + 10);
+    uint32_t cd_size = rd_u32_le(tail + eocd_pos + 12);
+    uint32_t cd_offset = rd_u32_le(tail + eocd_pos + 16);
+    free(tail);
+
+    /* Verify Android APK Signature Scheme v2/v3 magic ("APK Sig Block 42") right before cd_offset */
+    int v2_sig_present = 0;
+    if (cd_offset >= 32 && (long)cd_offset < file_sz) {
+        uint8_t magic[16] = {0};
+        if (fseek(fp, (long)cd_offset - 16L, SEEK_SET) == 0 &&
+            fread(magic, 1, 16, fp) == 16) {
+            if (memcmp(magic, "APK Sig Block 42", 16) == 0) {
+                v2_sig_present = 1;
+            }
+        }
+    }
+
+    /* Scan Central Directory for classes.dex CRC32 and count native .so libraries */
+    uint32_t dex_crc = 0;
+    uint32_t dex_size = 0;
+    int so_count = 0;
+
+    if (cd_size > 0 && cd_size < (8u * 1024u * 1024u) && (long)cd_offset + (long)cd_size <= file_sz) {
+        uint8_t* cd = (uint8_t*)malloc(cd_size);
+        if (cd) {
+            fseek(fp, (long)cd_offset, SEEK_SET);
+            if (fread(cd, 1, cd_size, fp) == cd_size) {
+                size_t p = 0;
+                for (uint16_t e = 0; e < cd_entries && p + 46 <= cd_size; e++) {
+                    if (cd[p] != 0x50 || cd[p + 1] != 0x4B || cd[p + 2] != 0x01 || cd[p + 3] != 0x02) break;
+                    uint32_t crc = rd_u32_le(cd + p + 16);
+                    uint32_t uncomp = rd_u32_le(cd + p + 24);
+                    uint16_t nlen = rd_u16_le(cd + p + 28);
+                    uint16_t xlen = rd_u16_le(cd + p + 30);
+                    uint16_t clen = rd_u16_le(cd + p + 32);
+                    if (p + 46 + nlen > cd_size) break;
+                    const char* name = (const char*)(cd + p + 46);
+                    if (nlen == 11 && memcmp(name, "classes.dex", 11) == 0) {
+                        dex_crc = crc;
+                        dex_size = uncomp;
+                    } else if (nlen > 7 && memcmp(name, "lib/", 4) == 0 &&
+                               memcmp(name + nlen - 3, ".so", 3) == 0) {
+                        so_count++;
+                    }
+                    p += 46u + (size_t)nlen + (size_t)xlen + (size_t)clen;
+                }
+            }
+            free(cd);
+        }
+    }
+
+    fclose(fp);
+
+    /* Official HyperDeX release always has V2/V3 signing block and intact classes.dex */
+    const char* verdict = (v2_sig_present && dex_crc != 0) ? "OK" : "TAMPERED";
+    char report[256];
+    snprintf(report, sizeof(report),
+             "%s|v2sig=%d|dex_crc=%08X|dex_sz=%u|so_count=%d",
+             verdict, v2_sig_present, dex_crc, dex_size, so_count);
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL

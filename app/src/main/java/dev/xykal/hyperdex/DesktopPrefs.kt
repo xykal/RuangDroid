@@ -120,6 +120,10 @@ class DesktopPrefs(private val context: Context) {
         get() = prefs.getBoolean("acrylic_blur_wp", false)
         set(value) = prefs.edit().putBoolean("acrylic_blur_wp", value).apply()
 
+    var liveShaderWallpaper: Boolean
+        get() = prefs.getBoolean("live_shader_wp", true) // OpenGL ES 3.0 GPU Aurora Shader on by default in v5.0!
+        set(value) = prefs.edit().putBoolean("live_shader_wp", value).apply()
+
     var uiScalePercent: Int
         get() = prefs.getInt("ui_scale_pct", 100).coerceIn(75, 135)
         set(value) {

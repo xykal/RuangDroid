@@ -173,6 +173,16 @@ object ExeEmulatorApp {
                     preferredHeightDp = 350
                 ) { state -> buildArkanoidView(context, state) }
             }
+            "spaceshooter" -> {
+                winManager.openWindow(
+                    appKey = "exe_spaceshooter",
+                    title = "${exeFile.name} (Gamepad + GL2D)",
+                    iconId = "exe_center",
+                    singleInstance = false,
+                    preferredWidthDp = 470,
+                    preferredHeightDp = 365
+                ) { state -> buildSpaceShooterWithGamepadView(context, state) }
+            }
             "calculator" -> host.openCalculator()
             else -> {
                 winManager.openWindow(
@@ -406,6 +416,26 @@ object ExeEmulatorApp {
                 }
             } else {
                 host.openBrowser("https://github.com/brunodev85/winlator/releases")
+            }
+        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
+
+        pluginBar.addView(UiKit.chipButton(context, "Setup Box64/X11", Color.argb(95, 16, 185, 129)) {
+            val cmd = "pkg update -y && pkg install -y x11-repo proot-distro termux-x11-nightly"
+            val sent = TermuxBridge.sendCommandToTermux(context, cmd, background = false)
+            if (sent) {
+                host.showToast("Termux Box64/X11", "Installer dikirim ke Termux!")
+            } else {
+                host.showToast("Termux Script", "Script tersimpan di C:\\Installers\\Setup_Termux_Box64_X11.sh")
+            }
+        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
+
+        pluginBar.addView(UiKit.chipButton(context, "Boost FPS", Color.argb(95, 245, 158, 11)) {
+            if (ShizukuBridge.hasPermission()) {
+                ShizukuBridge.runPrivilegedAsync("cmd power set-fixed-performance-mode-enabled true") { _, _ ->
+                    pluginBar.post { host.showToast("Gaming Mode", "Shizuku Fixed Performance Mode AKTIF!") }
+                }
+            } else {
+                host.showToast("Gaming Mode", "Aktifkan izin Shizuku dulu di Shizuku Hub")
             }
         }, LinearLayout.LayoutParams(-2, dp(context, 26)))
         root.addView(pluginBar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 10) })
@@ -642,5 +672,142 @@ object ExeEmulatorApp {
         }
         winState.onCloseCleanup = { running = false }
         return gameView
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun buildSpaceShooterWithGamepadView(context: Context, winState: DesktopWindowState): View {
+        var running = true
+        var shipX = 0.5f
+        var moveDir = 0f
+        var score = 0
+        var hp = 3
+
+        data class Bullet(var x: Float, var y: Float)
+        data class Enemy(var x: Float, var y: Float, var vx: Float)
+
+        val bullets = mutableListOf<Bullet>()
+        val enemies = mutableListOf<Enemy>()
+
+        fun spawnWave() {
+            enemies.clear()
+            for (i in 0..5) {
+                enemies.add(Enemy(0.14f + i * 0.14f, 0.16f + (i % 2) * 0.10f, if (i % 2 == 0) 0.006f else -0.006f))
+            }
+        }
+        spawnWave()
+
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(6, 10, 20))
+        }
+
+        val stageView = object : View(context) {
+            private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+            private val loop = object : Runnable {
+                override fun run() {
+                    if (!running) return
+                    if (hp > 0) {
+                        shipX = (shipX + moveDir * 0.022f).coerceIn(0.08f, 0.92f)
+                        val bIter = bullets.iterator()
+                        while (bIter.hasNext()) {
+                            val b = bIter.next()
+                            b.y -= 0.032f
+                            if (b.y < 0f) bIter.remove()
+                        }
+                        for (e in enemies) {
+                            e.x += e.vx
+                            if (e.x < 0.06f || e.x > 0.94f) {
+                                e.vx = -e.vx
+                                e.y += 0.045f
+                            }
+                            if (e.y > 0.84f) {
+                                hp = (hp - 1).coerceAtLeast(0)
+                                e.y = 0.15f
+                            }
+                        }
+                        val eIter = enemies.iterator()
+                        while (eIter.hasNext()) {
+                            val e = eIter.next()
+                            val hit = bullets.firstOrNull { abs(it.x - e.x) < 0.06f && abs(it.y - e.y) < 0.06f }
+                            if (hit != null) {
+                                bullets.remove(hit)
+                                eIter.remove()
+                                score += 25
+                            }
+                        }
+                        if (enemies.isEmpty()) spawnWave()
+                        invalidate()
+                    }
+                    postDelayed(this, 16L)
+                }
+            }
+            init { post(loop) }
+
+            override fun onDraw(canvas: Canvas) {
+                val w = width.toFloat(); val h = height.toFloat()
+                canvas.drawColor(Color.rgb(6, 10, 20))
+                p.color = Color.WHITE
+                p.textSize = UiKit.spPx(context, 11f)
+                p.typeface = Typeface.DEFAULT_BOLD
+                canvas.drawText(
+                    if (hp > 0) "SCORE: $score   |   SHIELD: $hp" else "GAME OVER — Klik RESET di Gamepad bawah",
+                    dp(context, 10).toFloat(), dp(context, 18).toFloat(), p
+                )
+                // Player ship
+                p.color = Color.rgb(56, 189, 248)
+                val sx = shipX * w; val sy = h * 0.88f
+                canvas.drawRoundRect(RectF(sx - dp(context, 16), sy - dp(context, 8), sx + dp(context, 16), sy + dp(context, 8)), 8f, 8f, p)
+                // Bullets
+                p.color = Color.rgb(250, 204, 21)
+                for (b in bullets) canvas.drawCircle(b.x * w, b.y * h, dp(context, 4).toFloat(), p)
+                // Enemies
+                p.color = Color.rgb(244, 63, 94)
+                for (e in enemies) {
+                    val ex = e.x * w; val ey = e.y * h
+                    canvas.drawRoundRect(RectF(ex - dp(context, 13), ey - dp(context, 9), ex + dp(context, 13), ey + dp(context, 9)), 6f, 6f, p)
+                }
+            }
+
+            override fun onTouchEvent(event: MotionEvent): Boolean {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                if (width > 0) shipX = (event.x / width).coerceIn(0.08f, 0.92f)
+                if (event.actionMasked == MotionEvent.ACTION_DOWN && bullets.size < 6) {
+                    bullets.add(Bullet(shipX, 0.82f))
+                }
+                return true
+            }
+        }
+        root.addView(stageView, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        // Custom Virtual Gaming Pad Bar (WASD / D-Pad + FIRE + RESET)
+        val padBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = UiKit.rounded(context, Color.rgb(13, 20, 35), 0)
+            setPadding(dp(context, 8), dp(context, 5), dp(context, 8), dp(context, 5))
+        }
+
+        fun holdBtn(lbl: String, dir: Float) = UiKit.chipButton(context, lbl, Color.argb(70, 59, 130, 246)) {}.apply {
+            setOnTouchListener { _, ev ->
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> moveDir = dir
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (moveDir == dir) moveDir = 0f
+                }
+                true
+            }
+        }
+
+        padBar.addView(holdBtn("◀ LEFT (A)", -1f), LinearLayout.LayoutParams(0, dp(context, 32), 1f).apply { rightMargin = dp(context, 5) })
+        padBar.addView(holdBtn("RIGHT (D) ▶", 1f), LinearLayout.LayoutParams(0, dp(context, 32), 1f).apply { rightMargin = dp(context, 8) })
+        padBar.addView(UiKit.chipButton(context, "FIRE (SPACE)", Color.argb(145, 225, 29, 72)) {
+            if (hp > 0 && bullets.size < 8) bullets.add(Bullet(shipX, 0.82f))
+        }, LinearLayout.LayoutParams(0, dp(context, 32), 1.1f).apply { rightMargin = dp(context, 5) })
+        padBar.addView(UiKit.chipButton(context, "RESET") {
+            hp = 3; score = 0; bullets.clear(); spawnWave(); stageView.invalidate()
+        }, LinearLayout.LayoutParams(-2, dp(context, 32)))
+
+        root.addView(padBar, LinearLayout.LayoutParams(-1, -2))
+        winState.onCloseCleanup = { running = false }
+        return root
     }
 }

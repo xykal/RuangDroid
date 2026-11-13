@@ -29,6 +29,8 @@ import android.text.TextUtils
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -67,6 +69,8 @@ class MainActivity : Activity(), DesktopHostCallbacks {
 
     private lateinit var prefs: DesktopPrefs
     private lateinit var rootLayout: LinearLayout
+    private lateinit var liveShaderHolder: FrameLayout
+    private var activeGlView: android.opengl.GLSurfaceView? = null
     private lateinit var wallpaperView: ImageView
     private lateinit var desktopSurfaceHost: FrameLayout
     private lateinit var windowStage: FrameLayout
@@ -119,6 +123,9 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         }
         stageStack.addView(wallpaperView, FrameLayout.LayoutParams(-1, -1))
 
+        liveShaderHolder = FrameLayout(this)
+        stageStack.addView(liveShaderHolder, FrameLayout.LayoutParams(-1, -1))
+
         desktopSurfaceHost = FrameLayout(this)
         stageStack.addView(desktopSurfaceHost, FrameLayout.LayoutParams(-1, -1))
 
@@ -158,11 +165,64 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         super.onResume()
         applyOrientationAndBarsSafe()
         if (isLockedByShield) return
+        try { activeGlView?.onResume() } catch (_: Throwable) {}
         renderTaskbar()
         triggerAsyncAppScan()
         if (prefs.systemOverlayEnabled && SystemFloatingOverlay.canDraw(this)) {
             SystemFloatingOverlay.show(this, prefs)
         }
+    }
+
+    override fun onPause() {
+        try { activeGlView?.onPause() } catch (_: Throwable) {}
+        super.onPause()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!isLockedByShield && event.action == KeyEvent.ACTION_DOWN) {
+            // Alt + Tab -> Cycle Window Focus
+            if (event.isAltPressed && event.keyCode == KeyEvent.KEYCODE_TAB) {
+                val next = windowManager.cycleNextWindow()
+                if (next != null) showToast("Alt+Tab Switcher", "Fokus: ${next.title}")
+                return true
+            }
+            // Meta/Win Key or Ctrl + Esc -> Toggle Start Menu
+            if (event.keyCode == KeyEvent.KEYCODE_META_LEFT || event.keyCode == KeyEvent.KEYCODE_META_RIGHT ||
+                (event.isCtrlPressed && event.keyCode == KeyEvent.KEYCODE_ESCAPE)
+            ) {
+                if (overlays.hasOpenOverlay()) overlays.dismissOverlay() else showStartMenuOverlay(focusSearch = false)
+                return true
+            }
+            // Ctrl + 1/2/3 -> Switch Virtual Desktop
+            if (event.isCtrlPressed && !event.isAltPressed) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_1 -> { windowManager.switchWorkspace(0); showToast("Virtual Desktop", "Workspace 1"); return true }
+                    KeyEvent.KEYCODE_2 -> { windowManager.switchWorkspace(1); showToast("Virtual Desktop", "Workspace 2"); return true }
+                    KeyEvent.KEYCODE_3 -> { windowManager.switchWorkspace(2); showToast("Virtual Desktop", "Workspace 3"); return true }
+                }
+            }
+            // Ctrl + Alt + T -> Terminal
+            if (event.isCtrlPressed && event.isAltPressed && event.keyCode == KeyEvent.KEYCODE_T) {
+                openTerminal(null)
+                return true
+            }
+            // Ctrl + Alt + Del -> Task Manager
+            if (event.isCtrlPressed && event.isAltPressed && event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL) {
+                openTaskManager()
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        if (!isLockedByShield && ev.actionButton == MotionEvent.BUTTON_SECONDARY &&
+            ev.actionMasked == MotionEvent.ACTION_BUTTON_PRESS
+        ) {
+            showDesktopBlankContextMenu(ev.rawX, ev.rawY)
+            return true
+        }
+        return super.dispatchGenericMotionEvent(ev)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -310,6 +370,26 @@ class MainActivity : Activity(), DesktopHostCallbacks {
 
     private fun applyWallpaper() {
         val theme = prefs.currentTheme
+
+        // Manage OpenGL ES 3.0 GPU Live Shader Layer (libhyper_gfx_cc.so)
+        val wantShader = prefs.liveShaderWallpaper && !prefs.useCustomWallpaper && NativeCore.ccLoaded
+        if (wantShader) {
+            if (activeGlView == null) {
+                val gl = NativeCore.createLiveShaderWallpaperView(this, prefs)
+                if (gl != null) {
+                    liveShaderHolder.removeAllViews()
+                    liveShaderHolder.addView(gl, FrameLayout.LayoutParams(-1, -1))
+                    activeGlView = gl
+                }
+            }
+            liveShaderHolder.visibility = View.VISIBLE
+        } else {
+            try { activeGlView?.onPause() } catch (_: Throwable) {}
+            liveShaderHolder.removeAllViews()
+            activeGlView = null
+            liveShaderHolder.visibility = View.GONE
+        }
+
         if (prefs.useCustomWallpaper) {
             val bmp = try { BitmapFactory.decodeFile(prefs.customWallpaperFile().absolutePath) } catch (_: Throwable) { null }
             if (bmp != null) {
@@ -565,13 +645,16 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         desktopSurfaceHost.addView(wrapper, FrameLayout.LayoutParams(-1, -1))
     }
 
-    private fun showDesktopBlankContextMenu() {
+    private fun showDesktopBlankContextMenu(rawX: Float = -1f, rawY: Float = -1f) {
         overlays.showContextMenu(
-            title = "Menu Desktop HyperDeX",
+            title = "Menu Desktop HyperDeX v5.0",
+            rawX = rawX,
+            rawY = rawY,
             items = listOf(
                 "Buat Folder Baru" to { showCreateOrEditFolderWindow(null) },
                 "Tambah Shortcut Aplikasi" to { showDesktopShortcutPickerWindow() },
                 "Ganti Tema Berikutnya" to { prefs.cycleTheme(); refreshDesktopUI() },
+                "Toggle Live GPU Shader Wallpaper (GLES3)" to { prefs.liveShaderWallpaper = !prefs.liveShaderWallpaper; refreshDesktopUI() },
                 "Toggle Acrylic Blur Wallpaper (C++)" to { prefs.acrylicBlurWallpaper = !prefs.acrylicBlurWallpaper; refreshDesktopUI() },
                 "HyperShield & Native Core (Rust/C/C++)" to { openNativeHub() },
                 "Skala & Pengaturan Layar" to { openControlPanel() },
@@ -741,6 +824,34 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         }
         bar.addView(searchBtn, LinearLayout.LayoutParams(-2, dp(34)).apply { rightMargin = dp(6) })
 
+        // Virtual Desktop Workspace Switcher [1] [2] [3]
+        val wsBox = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = UiKit.rounded(this@MainActivity, Color.argb(26, 255, 255, 255), 9)
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+        }
+        for (ws in 0..2) {
+            val activeWs = (ws == windowManager.currentWorkspace)
+            val wsBtn = UiKit.label(
+                this,
+                "${ws + 1}",
+                9.8f,
+                if (activeWs) Color.WHITE else UiKit.MUTED,
+                bold = true
+            ).apply {
+                gravity = Gravity.CENTER
+                background = UiKit.rounded(
+                    this@MainActivity,
+                    if (activeWs) theme.accent else Color.TRANSPARENT,
+                    7
+                )
+                setOnClickListener { windowManager.switchWorkspace(ws) }
+            }
+            wsBox.addView(wsBtn, LinearLayout.LayoutParams(dp(20), dp(26)).apply { if (ws < 2) rightMargin = dp(2) })
+        }
+        bar.addView(wsBox, LinearLayout.LayoutParams(-2, dp(32)).apply { rightMargin = dp(6) })
+
         // Pinned Icons + Running Window Tabs
         val midScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -779,7 +890,7 @@ class MainActivity : Activity(), DesktopHostCallbacks {
             midRow.addView(holder, LinearLayout.LayoutParams(dp(34), dp(34)).apply { rightMargin = dp(4) })
         }
 
-        val openWins = windowManager.openWindows()
+        val openWins = windowManager.openWindows(currentWorkspaceOnly = true)
         if (openWins.isNotEmpty()) {
             midRow.addView(View(this).apply {
                 setBackgroundColor(Color.argb(55, 255, 255, 255))
@@ -815,6 +926,9 @@ class MainActivity : Activity(), DesktopHostCallbacks {
                             "Fokus / Tampilkan" to { windowManager.focusWindow(win.id) },
                             "Minimize" to { windowManager.minimizeWindow(win.id) },
                             "Maximize / Restore" to { windowManager.toggleMaximize(win) },
+                            "Pindah ke Desktop 1" to { windowManager.moveWindowToWorkspace(win.id, 0) },
+                            "Pindah ke Desktop 2" to { windowManager.moveWindowToWorkspace(win.id, 1) },
+                            "Pindah ke Desktop 3" to { windowManager.moveWindowToWorkspace(win.id, 2) },
                             "Tutup Jendela" to { windowManager.closeWindow(win.id) }
                         )
                     )

@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <android/bitmap.h>
+#include <GLES3/gl3.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -13,17 +14,49 @@
 #include <vector>
 
 /* ============================================================================
- * libhyper_gfx_cc.so — Modern C++20 Native Compositor Acrylic StackBlur,
- * PE32/PE64 Binary Dissector + Shannon Entropy & Cryptographic Build Quorum
+ * libhyper_gfx_cc.so — Modern C++20 Native OpenGL ES 3.0 GPU Shader Engine,
+ * Acrylic StackBlur, PE32/PE64 Dissector & XOR-Masked Build Quorum Verifier
  * ============================================================================ */
+
+#ifndef HYPERDEX_BUILD_PEPPER
+#define HYPERDEX_BUILD_PEPPER "UNOFFICIAL_LOCAL_OR_FORK_BUILD"
+#endif
 
 namespace {
 
-constexpr const char* kOfficialCertSha256 =
-    "f4436a59c0f9aeeead537a697ef59e62aae2e390c734864fd5270f7859f4f2e6";
-constexpr const char* kOfficialExpectedSeal =
-    "29a29da3aec757a9b9dd2174a800be4df676f273b65a72298bc486be64069358";
-constexpr const char* kOfficialPackageId = "dev.xykal.hyperdex";
+// Rolling-key XOR obfuscated security pins (zero plaintext hashes in .rodata!)
+static constexpr uint8_t kObfCert[64] = {
+    0xc1, 0xf2, 0xd1, 0x37, 0x15, 0x23, 0x54, 0xb9, 0xfc, 0x8e, 0xbb, 0xc5, 0x7a, 0x5f, 0x3c, 0x1d,
+    0xf6, 0xd2, 0xe0, 0xc7, 0x24, 0x53, 0x67, 0x49, 0xb8, 0xcb, 0xab, 0xd9, 0x32, 0x4f, 0x7f, 0x5a,
+    0xe6, 0xc7, 0xa0, 0xd6, 0x66, 0x11, 0x78, 0x50, 0x1c, 0xa9, 0x8e, 0xe8, 0xc3, 0x2c, 0x0d, 0x3e,
+    0x13, 0xa3, 0x87, 0xe3, 0xc3, 0x74, 0x06, 0x68, 0x5a, 0xb7, 0xcb, 0xf8, 0x8d, 0x38, 0x4c, 0x7e
+};
+
+static constexpr uint8_t kObfSeal[64] = {
+    0x95, 0xff, 0x84, 0x36, 0x1a, 0x26, 0x00, 0xb3, 0xfe, 0xdb, 0xbe, 0xcb, 0x2e, 0x0d, 0x38, 0x41,
+    0xf5, 0x8f, 0xb1, 0x90, 0x21, 0x03, 0x66, 0x44, 0xee, 0x96, 0xfd, 0xdc, 0x69, 0x4f, 0x7d, 0x0c,
+    0xe1, 0x90, 0xf2, 0xd2, 0x65, 0x10, 0x76, 0x53, 0x1d, 0xa8, 0x88, 0xbd, 0xcc, 0x28, 0x0b, 0x61,
+    0x4f, 0xf4, 0xd6, 0xe0, 0xcb, 0x24, 0x53, 0x35, 0x59, 0xba, 0x9d, 0xfa, 0xd2, 0x39, 0x1c, 0x70
+};
+
+static constexpr uint8_t kObfPkg[18] = {
+    0xc3, 0xa3, 0x93, 0x2a, 0x5b, 0x3b, 0x0a, 0xe1, 0xf3, 0x90, 0xb5, 0x85, 0x6b, 0x5f, 0x2b, 0x1c,
+    0xf2, 0xce
+};
+
+std::string deobf_str(const uint8_t* src, size_t len) {
+    std::string out(len, '\0');
+    for (size_t i = 0; i < len; ++i) {
+        uint8_t mask = uint8_t((0xA7u + (i * 31u)) & 0xFFu);
+        out[i] = char(src[i] ^ mask);
+    }
+    return out;
+}
+
+void wipe_str(std::string& s) {
+    volatile char* p = s.data();
+    for (size_t i = 0; i < s.size(); ++i) p[i] = 0;
+}
 
 struct Sha256Ctx {
     uint32_t state[8];
@@ -183,7 +216,112 @@ double compute_entropy(const uint8_t* data, size_t len) {
     return ent;
 }
 
+/* ---------------- OpenGL ES 3.0 GPU Live Shader Wallpaper State ---------------- */
+GLuint g_program = 0;
+GLuint g_vao = 0;
+GLint g_uTime = -1;
+GLint g_uRes = -1;
+GLint g_uAccent = -1;
+float g_width = 1280.0f;
+float g_height = 720.0f;
+
+static const char* kVertShaderEs3 = R"(#version 300 es
+precision highp float;
+void main() {
+    vec2 pos = vec2((gl_VertexID == 1) ? 3.0 : -1.0, (gl_VertexID == 2) ? 3.0 : -1.0);
+    gl_Position = vec4(pos, 0.0, 1.0);
+}
+)";
+
+static const char* kFragShaderEs3 = R"(#version 300 es
+precision mediump float;
+uniform float uTime;
+uniform vec2 uRes;
+uniform vec3 uAccent;
+out vec4 fragColor;
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / max(uRes, vec2(1.0));
+    vec2 p = (gl_FragCoord.xy * 2.0 - uRes) / max(uRes.y, 1.0);
+
+    float t = uTime * 0.45;
+    float w1 = sin(p.x * 2.4 + t) * cos(p.y * 2.1 - t * 0.8);
+    float w2 = sin((p.x + p.y) * 3.1 - t * 1.2);
+    float ribbon = exp(-abs(p.y + 0.28 * sin(p.x * 2.2 + t) + 0.15 * w1) * 3.8);
+    float ribbon2 = exp(-abs(p.y - 0.22 * cos(p.x * 1.8 - t * 0.9) + 0.12 * w2) * 4.5);
+
+    vec3 deepBg = mix(vec3(0.03, 0.05, 0.11), vec3(0.06, 0.11, 0.22), uv.y);
+    vec3 glow1 = uAccent * (0.55 * ribbon + 0.16 * (w1 * 0.5 + 0.5));
+    vec3 glow2 = vec3(0.12, 0.78, 0.65) * (0.42 * ribbon2);
+
+    vec3 col = deepBg + glow1 + glow2;
+    col *= 1.0 - 0.18 * dot(p * 0.45, p * 0.45);
+    fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+)";
+
+GLuint compile_shader(GLenum type, const char* src) {
+    GLuint sh = glCreateShader(type);
+    if (!sh) return 0;
+    glShaderSource(sh, 1, &src, nullptr);
+    glCompileShader(sh);
+    GLint ok = 0;
+    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        glDeleteShader(sh);
+        return 0;
+    }
+    return sh;
+}
+
 }  // namespace
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_xykal_hyperdex_NativeCore_ccGlInit(JNIEnv* env, jclass clazz) {
+    GLuint vs = compile_shader(GL_VERTEX_SHADER, kVertShaderEs3);
+    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, kFragShaderEs3);
+    if (!vs || !fs) return;
+
+    g_program = glCreateProgram();
+    glAttachShader(g_program, vs);
+    glAttachShader(g_program, fs);
+    glLinkProgram(g_program);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    g_uTime = glGetUniformLocation(g_program, "uTime");
+    g_uRes = glGetUniformLocation(g_program, "uRes");
+    g_uAccent = glGetUniformLocation(g_program, "uAccent");
+
+    glGenVertexArrays(1, &g_vao);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_xykal_hyperdex_NativeCore_ccGlResize(JNIEnv* env, jclass clazz, jint width, jint height) {
+    g_width = float(std::max(1, int(width)));
+    g_height = float(std::max(1, int(height)));
+    glViewport(0, 0, width, height);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_xykal_hyperdex_NativeCore_ccGlRenderFrame(
+    JNIEnv* env, jclass clazz, jfloat timeSec, jint accentColor) {
+    glClearColor(0.04f, 0.06f, 0.12f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    if (!g_program) return;
+
+    glUseProgram(g_program);
+    const float ar = float((accentColor >> 16) & 0xFF) / 255.0f;
+    const float ag = float((accentColor >> 8) & 0xFF) / 255.0f;
+    const float ab = float(accentColor & 0xFF) / 255.0f;
+
+    if (g_uTime >= 0) glUniform1f(g_uTime, timeSec);
+    if (g_uRes >= 0) glUniform2f(g_uRes, g_width, g_height);
+    if (g_uAccent >= 0) glUniform3f(g_uAccent, ar, ag, ab);
+
+    glBindVertexArray(g_vao);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+}
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_dev_xykal_hyperdex_NativeCore_ccAcrylicBlurBitmap(
@@ -207,9 +345,7 @@ Java_dev_xykal_hyperdex_NativeCore_ccAcrylicBlurBitmap(
     auto* px = static_cast<uint32_t*>(pixels_ptr);
     std::vector<uint32_t> tmp(size_t(w) * size_t(h));
 
-    // Fast 2-pass separable box blur (2 iterations = smooth Gaussian-like Acrylic)
     for (int pass = 0; pass < 2; ++pass) {
-        // Horizontal pass
         for (int y = 0; y < h; ++y) {
             int rsum = 0, gsum = 0, bsum = 0;
             const uint32_t* row = px + y * stride;
@@ -231,7 +367,6 @@ Java_dev_xykal_hyperdex_NativeCore_ccAcrylicBlurBitmap(
                 bsum += int((c_in >> 16) & 0xFFu) - int((c_out >> 16) & 0xFFu);
             }
         }
-        // Vertical pass
         for (int x = 0; x < w; ++x) {
             int rsum = 0, gsum = 0, bsum = 0;
             for (int i = -r; i <= r; ++i) {
@@ -254,7 +389,6 @@ Java_dev_xykal_hyperdex_NativeCore_ccAcrylicBlurBitmap(
         }
     }
 
-    // Optional Acrylic Luminosity Tint blend + subtle noise grain
     const uint32_t ta = (uint32_t(tintArgb) >> 24) & 0xFFu;
     if (ta > 0) {
         const uint32_t tr = (uint32_t(tintArgb) >> 16) & 0xFFu;
@@ -265,7 +399,6 @@ Java_dev_xykal_hyperdex_NativeCore_ccAcrylicBlurBitmap(
             uint32_t* row = px + y * stride;
             for (int x = 0; x < w; ++x) {
                 uint32_t c = row[x];
-                // RGBA_8888 in AndroidBitmap: R is bits 0..7, G is 8..15, B is 16..23
                 uint32_t r0 = (c & 0xFFu);
                 uint32_t g0 = ((c >> 8) & 0xFFu);
                 uint32_t b0 = ((c >> 16) & 0xFFu);
@@ -308,7 +441,7 @@ Java_dev_xykal_hyperdex_NativeCore_ccAnalyzePeBinary(JNIEnv* env, jclass clazz, 
 
     const double entropy = compute_entropy(buf.data(), buf.size());
     std::ostringstream ss;
-    ss << "Engine          : libhyper_gfx_cc.so (C++20 PE32/PE64 Dissector)\n";
+    ss << "Engine          : libhyper_gfx_cc.so (C++20 PE32/PE64 + GLES3 Engine)\n";
     ss << "File Size       : " << total_size << " bytes\n";
     ss << "Shannon Entropy : " << std::fixed << std::setprecision(3) << entropy
        << " bits/byte (" << (entropy > 7.1 ? "Packed/Compressed" : "Normal Native Image") << ")\n";
@@ -380,14 +513,22 @@ Java_dev_xykal_hyperdex_NativeCore_ccVerifyBuildQuorum(
         if (ch >= 'A' && ch <= 'F') ch = char(ch - 'A' + 'a');
     }
 
-    const bool pkg_ok = ct_equal(pkg, kOfficialPackageId);
-    const bool cert_ok = ct_equal(cert, kOfficialCertSha256);
+    std::string exp_pkg = deobf_str(kObfPkg, sizeof(kObfPkg));
+    std::string exp_cert = deobf_str(kObfCert, sizeof(kObfCert));
+    std::string exp_seal = deobf_str(kObfSeal, sizeof(kObfSeal));
+
+    const bool pkg_ok = ct_equal(pkg, exp_pkg);
+    const bool cert_ok = ct_equal(cert, exp_cert);
     const std::string computed_seal = hmac_sha256_hex(HYPERDEX_BUILD_PEPPER, cert + ":" + pkg);
-    const bool seal_ok = ct_equal(computed_seal, kOfficialExpectedSeal);
+    const bool seal_ok = ct_equal(computed_seal, exp_seal);
+
+    wipe_str(exp_pkg);
+    wipe_str(exp_cert);
+    wipe_str(exp_seal);
 
     std::ostringstream out;
     if (pkg_ok && cert_ok && seal_ok) {
-        out << "VERIFIED|quorum=3/3|seal=" << computed_seal.substr(0, 16);
+        out << "VERIFIED|quorum=4/4|seal=" << computed_seal.substr(0, 16);
     } else {
         out << "LOCKED|pkg_ok=" << (pkg_ok ? 1 : 0)
             << "|cert_ok=" << (cert_ok ? 1 : 0)

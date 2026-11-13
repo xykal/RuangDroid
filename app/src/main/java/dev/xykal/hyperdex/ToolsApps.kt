@@ -209,7 +209,7 @@ object ToolsApps {
             typeface = Typeface.MONOSPACE
             setTextSize(TypedValue.COMPLEX_UNIT_PX, UiKit.spPx(context, 11.5f))
             setTextColor(Color.rgb(134, 239, 172))
-            text = "HyperDeX Polyglot Shell [v4.0.0 — Kotlin / Rust / C11 / C++20 / Shizuku]\nKetik 'help' untuk daftar perintah lengkap.\n\n"
+            text = "HyperDeX Polyglot Shell [v5.0.0 — Kotlin / Rust / C11 / C++20 GLES3 / Shizuku]\nKetik 'help' untuk daftar perintah lengkap.\n\n"
         }
         scroll.addView(outputTv)
 
@@ -267,7 +267,7 @@ object ToolsApps {
                     """.trimIndent()
                 )
                 "cls", "clear" -> outputTv.text = ""
-                "ver" -> appendOut("HyperDeX Droid OS v4.0.0 | Rust=${NativeCore.rustLoaded} C11=${NativeCore.cLoaded} C++20=${NativeCore.ccLoaded} | Shizuku: ${ShizukuBridge.privilegeLabel()}")
+                "ver" -> appendOut("HyperDeX Ultimate OS v5.0.0 | Rust=${NativeCore.rustLoaded} C11=${NativeCore.cLoaded} C++20=${NativeCore.ccLoaded} | Shizuku: ${ShizukuBridge.privilegeLabel()}")
                 "native" -> {
                     val v = NativeCore.verifyAppSecurity(context)
                     appendOut("Shield Status : ${v.headline}")
@@ -640,6 +640,13 @@ object ToolsApps {
             "Posisikan tombol Start & ikon aplikasi di tengah taskbar",
             { prefs.centerTaskbar },
             { prefs.centerTaskbar = !prefs.centerTaskbar; host.refreshDesktopUI() }
+        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 5) })
+
+        root.addView(toggleRow(
+            "Live GPU Aurora Shader Wallpaper (OpenGL ES 3.0 C++)",
+            "Render animasi shader plasma real-time di GPU lewat libhyper_gfx_cc.so",
+            { prefs.liveShaderWallpaper },
+            { prefs.liveShaderWallpaper = !prefs.liveShaderWallpaper; host.refreshDesktopUI() }
         ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 5) })
 
         root.addView(toggleRow(

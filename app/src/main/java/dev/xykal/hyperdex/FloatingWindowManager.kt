@@ -30,6 +30,7 @@ class DesktopWindowState(
     var savedY: Int = 0,
     var savedW: Int = 0,
     var savedH: Int = 0,
+    var workspace: Int = 0,
     var onCloseCleanup: (() -> Unit)? = null
 )
 
@@ -42,6 +43,8 @@ class FloatingWindowManager(
     private val windows = mutableListOf<DesktopWindowState>()
     var activeWindowId: String? = null
         private set
+    var currentWorkspace: Int = 0
+        private set
 
     private val snapGhost = View(context).apply {
         visibility = View.GONE
@@ -51,7 +54,52 @@ class FloatingWindowManager(
         stage.addView(snapGhost, FrameLayout.LayoutParams(0, 0))
     }
 
-    fun openWindows(): List<DesktopWindowState> = windows.toList()
+    fun openWindows(currentWorkspaceOnly: Boolean = false): List<DesktopWindowState> =
+        if (currentWorkspaceOnly) windows.filter { it.workspace == currentWorkspace } else windows.toList()
+
+    fun switchWorkspace(wsIndex: Int) {
+        val targetWs = wsIndex.coerceIn(0, 2)
+        if (targetWs == currentWorkspace) return
+        currentWorkspace = targetWs
+        for (w in windows) {
+            if (w.workspace == currentWorkspace && !w.minimized) {
+                w.frame.visibility = View.VISIBLE
+                w.frame.alpha = 0f
+                w.frame.animate().alpha(1f).setDuration(150).start()
+            } else {
+                w.frame.visibility = View.GONE
+            }
+        }
+        activeWindowId = windows.lastOrNull { it.workspace == currentWorkspace && !it.minimized }?.id
+        refreshHeaderStyles()
+        onWindowsChanged()
+    }
+
+    fun moveWindowToWorkspace(id: String, targetWs: Int) {
+        val w = windows.find { it.id == id } ?: return
+        val ws = targetWs.coerceIn(0, 2)
+        w.workspace = ws
+        if (ws != currentWorkspace) {
+            w.frame.visibility = View.GONE
+            if (activeWindowId == id) {
+                activeWindowId = windows.lastOrNull { it.workspace == currentWorkspace && !it.minimized }?.id
+            }
+        } else if (!w.minimized) {
+            w.frame.visibility = View.VISIBLE
+            focusWindow(w.id)
+        }
+        refreshHeaderStyles()
+        onWindowsChanged()
+    }
+
+    fun cycleNextWindow(): DesktopWindowState? {
+        val wsWins = windows.filter { it.workspace == currentWorkspace }
+        if (wsWins.isEmpty()) return null
+        val curIdx = wsWins.indexOfFirst { it.id == activeWindowId }
+        val next = wsWins[(curIdx + 1) % wsWins.size]
+        focusWindow(next.id)
+        return next
+    }
     private fun dp(v: Int): Int = UiKit.dp(context, v)
 
     @SuppressLint("ClickableViewAccessibility")
@@ -137,6 +185,7 @@ class FloatingWindowManager(
             savedY = initY,
             savedW = initW,
             savedH = initH,
+            workspace = currentWorkspace,
             onCloseCleanup = onCloseCleanup
         )
 
@@ -417,6 +466,9 @@ class FloatingWindowManager(
 
     fun focusWindow(id: String) {
         val target = windows.find { it.id == id } ?: return
+        if (target.workspace != currentWorkspace) {
+            switchWorkspace(target.workspace)
+        }
         if (target.minimized) {
             target.minimized = false
             target.frame.visibility = View.VISIBLE

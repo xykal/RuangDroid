@@ -2,22 +2,45 @@ use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jint, jstring};
 use jni::JNIEnv;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::time::Instant;
 
 // ============================================================================
-// librust_hypercore.so — Pure Safe Rust Native Security & Compute Engine
-// 1. FIPS 180-4 SHA-256 & HMAC-SHA256 Constant-Time APK Signature Attestation
-// 2. Streaming File & Text SHA-256 Checksum Engine
-// 3. Recursive-Descent Scientific Math Expression Parser & Evaluator
-// 4. Cryptographic Throughput Benchmark Engine
+// librust_hypercore.so — Safe Rust 2021 Polyglot Security, ZIP & Math Engine
+// 1. Rolling-XOR Masked SHA-256 & HMAC-SHA256 Constant-Time APK Attestation
+// 2. Native ZIP Central Directory Inspector (rustInspectZipArchive)
+// 3. Streaming File & Text SHA-256 Checksum Engine
+// 4. Recursive-Descent Scientific Math Expression Parser & Evaluator
 // ============================================================================
 
-const OFFICIAL_CERT_SHA256: &str =
-    "f4436a59c0f9aeeead537a697ef59e62aae2e390c734864fd5270f7859f4f2e6";
-const OFFICIAL_EXPECTED_SEAL: &str =
-    "29a29da3aec757a9b9dd2174a800be4df676f273b65a72298bc486be64069358";
-const OFFICIAL_PACKAGE_ID: &str = "dev.xykal.hyperdex";
+const OBF_CERT: [u8; 64] = [
+    0xc1, 0xf2, 0xd1, 0x37, 0x15, 0x23, 0x54, 0xb9, 0xfc, 0x8e, 0xbb, 0xc5, 0x7a, 0x5f, 0x3c, 0x1d,
+    0xf6, 0xd2, 0xe0, 0xc7, 0x24, 0x53, 0x67, 0x49, 0xb8, 0xcb, 0xab, 0xd9, 0x32, 0x4f, 0x7f, 0x5a,
+    0xe6, 0xc7, 0xa0, 0xd6, 0x66, 0x11, 0x78, 0x50, 0x1c, 0xa9, 0x8e, 0xe8, 0xc3, 0x2c, 0x0d, 0x3e,
+    0x13, 0xa3, 0x87, 0xe3, 0xc3, 0x74, 0x06, 0x68, 0x5a, 0xb7, 0xcb, 0xf8, 0x8d, 0x38, 0x4c, 0x7e,
+];
+
+const OBF_SEAL: [u8; 64] = [
+    0x95, 0xff, 0x84, 0x36, 0x1a, 0x26, 0x00, 0xb3, 0xfe, 0xdb, 0xbe, 0xcb, 0x2e, 0x0d, 0x38, 0x41,
+    0xf5, 0x8f, 0xb1, 0x90, 0x21, 0x03, 0x66, 0x44, 0xee, 0x96, 0xfd, 0xdc, 0x69, 0x4f, 0x7d, 0x0c,
+    0xe1, 0x90, 0xf2, 0xd2, 0x65, 0x10, 0x76, 0x53, 0x1d, 0xa8, 0x88, 0xbd, 0xcc, 0x28, 0x0b, 0x61,
+    0x4f, 0xf4, 0xd6, 0xe0, 0xcb, 0x24, 0x53, 0x35, 0x59, 0xba, 0x9d, 0xfa, 0xd2, 0x39, 0x1c, 0x70,
+];
+
+const OBF_PKG: [u8; 18] = [
+    0xc3, 0xa3, 0x93, 0x2a, 0x5b, 0x3b, 0x0a, 0xe1, 0xf3, 0x90, 0xb5, 0x85, 0x6b, 0x5f, 0x2b, 0x1c,
+    0xf2, 0xce,
+];
+
+fn deobf_bytes(src: &[u8]) -> Vec<u8> {
+    src.iter()
+        .enumerate()
+        .map(|(i, &b)| {
+            let mask = (0xA7usize.wrapping_add(i.wrapping_mul(31))) as u8;
+            b ^ mask
+        })
+        .collect()
+}
 
 const K256: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -190,12 +213,12 @@ fn hmac_sha256_hex(key: &[u8], msg: &[u8]) -> String {
     to_hex(&outer.finalize())
 }
 
-fn ct_eq(a: &str, b: &str) -> bool {
+fn ct_eq_bytes(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
     let mut diff = 0u8;
-    for (x, y) in a.bytes().zip(b.bytes()) {
+    for (&x, &y) in a.iter().zip(b.iter()) {
         diff |= x ^ y;
     }
     diff == 0
@@ -222,9 +245,17 @@ pub extern "system" fn Java_dev_xykal_hyperdex_NativeCore_rustVerifySignature<'l
     let msg = format!("{}:{}", live_sha256, pkg);
     let live_seal = hmac_sha256_hex(pepper.as_bytes(), msg.as_bytes());
 
-    let pkg_ok = ct_eq(&pkg, OFFICIAL_PACKAGE_ID);
-    let cert_ok = ct_eq(&live_sha256, OFFICIAL_CERT_SHA256);
-    let seal_ok = ct_eq(&live_seal, OFFICIAL_EXPECTED_SEAL);
+    let mut exp_pkg = deobf_bytes(&OBF_PKG);
+    let mut exp_cert = deobf_bytes(&OBF_CERT);
+    let mut exp_seal = deobf_bytes(&OBF_SEAL);
+
+    let pkg_ok = ct_eq_bytes(pkg.as_bytes(), &exp_pkg);
+    let cert_ok = ct_eq_bytes(live_sha256.as_bytes(), &exp_cert);
+    let seal_ok = ct_eq_bytes(live_seal.as_bytes(), &exp_seal);
+
+    exp_pkg.fill(0);
+    exp_cert.fill(0);
+    exp_seal.fill(0);
 
     let status = if pkg_ok && cert_ok && seal_ok {
         format!(
@@ -248,6 +279,88 @@ pub extern "system" fn Java_dev_xykal_hyperdex_NativeCore_rustVerifySignature<'l
     };
 
     ret_jstring(&env, &status)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_xykal_hyperdex_NativeCore_rustInspectZipArchive<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    file_path: JString<'local>,
+) -> jstring {
+    let path: String = env.get_string(&file_path).map(Into::into).unwrap_or_default();
+    let mut file = match File::open(&path) {
+        Ok(f) => f,
+        Err(e) => return ret_jstring(&env, &format!("ERR: {}", e)),
+    };
+    let len = match file.metadata() {
+        Ok(m) => m.len(),
+        Err(e) => return ret_jstring(&env, &format!("ERR: {}", e)),
+    };
+    if len < 22 {
+        return ret_jstring(&env, "ERR: Bukan arsip ZIP valid (< 22 bytes)");
+    }
+
+    let tail_sz = len.min(65558) as usize;
+    let mut tail = vec![0u8; tail_sz];
+    if file.seek(SeekFrom::Start(len - tail_sz as u64)).is_err()
+        || file.read_exact(&mut tail).is_err()
+    {
+        return ret_jstring(&env, "ERR: Gagal membaca EOCD ZIP");
+    }
+
+    let mut eocd = None;
+    for i in (0..=tail_sz.saturating_sub(22)).rev() {
+        if &tail[i..i + 4] == b"PK\x05\x06" {
+            eocd = Some(i);
+            break;
+        }
+    }
+    let idx = match eocd {
+        Some(v) => v,
+        None => return ret_jstring(&env, "ERR: Header EOCD ZIP tidak ditemukan"),
+    };
+
+    let entries = u16::from_le_bytes([tail[idx + 10], tail[idx + 11]]);
+    let cd_size = u32::from_le_bytes([tail[idx + 12], tail[idx + 13], tail[idx + 14], tail[idx + 15]]) as usize;
+    let cd_off = u32::from_le_bytes([tail[idx + 16], tail[idx + 17], tail[idx + 18], tail[idx + 19]]) as u64;
+
+    if cd_size > 4 * 1024 * 1024 || cd_off + (cd_size as u64) > len {
+        return ret_jstring(&env, &format!("ZIP Valid: {} item ({} KB)", entries, len / 1024));
+    }
+
+    let mut cd = vec![0u8; cd_size];
+    if file.seek(SeekFrom::Start(cd_off)).is_err() || file.read_exact(&mut cd).is_err() {
+        return ret_jstring(&env, "ERR: Gagal membaca Central Directory");
+    }
+
+    let mut out = format!(
+        "Rust ZIP Inspector — {} entri ({:.1} KB total)\n",
+        entries,
+        (len as f64) / 1024.0
+    );
+    let mut p = 0usize;
+    let mut shown = 0usize;
+    while p + 46 <= cd.len() && shown < 16 {
+        if &cd[p..p + 4] != b"PK\x01\x02" {
+            break;
+        }
+        let crc = u32::from_le_bytes([cd[p + 16], cd[p + 17], cd[p + 18], cd[p + 19]]);
+        let uncomp = u32::from_le_bytes([cd[p + 24], cd[p + 25], cd[p + 26], cd[p + 27]]);
+        let nlen = u16::from_le_bytes([cd[p + 28], cd[p + 29]]) as usize;
+        let xlen = u16::from_le_bytes([cd[p + 30], cd[p + 31]]) as usize;
+        let clen = u16::from_le_bytes([cd[p + 32], cd[p + 33]]) as usize;
+        if p + 46 + nlen > cd.len() {
+            break;
+        }
+        let name = String::from_utf8_lossy(&cd[p + 46..p + 46 + nlen]);
+        out.push_str(&format!("  • {} ({} B, CRC={:08X})\n", name, uncomp, crc));
+        shown += 1;
+        p += 46 + nlen + xlen + clen;
+    }
+    if (entries as usize) > shown {
+        out.push_str(&format!("  … dan {} file lainnya", (entries as usize) - shown));
+    }
+    ret_jstring(&env, out.trim_end())
 }
 
 #[no_mangle]
@@ -447,8 +560,11 @@ impl<'a> MathParser<'a> {
                 return Ok(std::f64::consts::E);
             }
             self.skip_ws();
-            if self.pos >= self.src.len() || self.src[self.pos] != b'(' {
+            if self.pos >= self.src.len() || self.src[self.pos] != b')' && self.src[self.pos] != b'(' {
                 return Err("Unknown identifier");
+            }
+            if self.src[self.pos] != b'(' {
+                return Err("Expected '('");
             }
             self.pos += 1;
             let arg = self.parse_expr()?;

@@ -393,23 +393,30 @@ object ExeEmulatorApp {
 
         val engine = detectInstalledWinePackage(context)
         val pluginBar = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.VERTICAL
             background = UiKit.rounded(context, Color.rgb(8, 12, 22), 10)
-            setPadding(dp(context, 12), dp(context, 7), dp(context, 10), dp(context, 7))
+            setPadding(dp(context, 10), dp(context, 7), dp(context, 10), dp(context, 7))
         }
         pluginBar.addView(
             UiKit.label(
                 context,
                 if (engine != null) "Kontainer x86 Aktif: ${engine.first}"
                 else "Kontainer Wine/Box64 Eksternal: Belum terpasang",
-                11f,
+                10.8f,
                 if (engine != null) Color.rgb(134, 239, 172) else Color.rgb(253, 224, 71),
                 bold = true
             ),
-            LinearLayout.LayoutParams(0, -2, 1f)
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 5) }
         )
-        pluginBar.addView(UiKit.chipButton(context, if (engine != null) "Buka Engine" else "Get Winlator") {
+
+        val pluginBtnsScroll = android.widget.HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val pluginBtnsRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        pluginBtnsRow.addView(UiKit.chipButton(context, if (engine != null) "Buka Engine" else "Get Winlator") {
             if (engine != null) {
                 context.packageManager.getLaunchIntentForPackage(engine.second)?.let {
                     it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(it)
@@ -417,9 +424,9 @@ object ExeEmulatorApp {
             } else {
                 host.openBrowser("https://github.com/brunodev85/winlator/releases")
             }
-        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
+        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 5) })
 
-        pluginBar.addView(UiKit.chipButton(context, "Setup Box64/X11", Color.argb(95, 16, 185, 129)) {
+        pluginBtnsRow.addView(UiKit.chipButton(context, "Setup Box64/X11", Color.argb(95, 16, 185, 129)) {
             val cmd = "pkg update -y && pkg install -y x11-repo proot-distro termux-x11-nightly"
             val sent = TermuxBridge.sendCommandToTermux(context, cmd, background = false)
             if (sent) {
@@ -427,9 +434,9 @@ object ExeEmulatorApp {
             } else {
                 host.showToast("Termux Script", "Script tersimpan di C:\\Installers\\Setup_Termux_Box64_X11.sh")
             }
-        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
+        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 5) })
 
-        pluginBar.addView(UiKit.chipButton(context, "Boost FPS", Color.argb(95, 245, 158, 11)) {
+        pluginBtnsRow.addView(UiKit.chipButton(context, "Boost FPS", Color.argb(95, 245, 158, 11)) {
             if (ShizukuBridge.hasPermission()) {
                 ShizukuBridge.runPrivilegedAsync("cmd power set-fixed-performance-mode-enabled true") { _, _ ->
                     pluginBar.post { host.showToast("Gaming Mode", "Shizuku Fixed Performance Mode AKTIF!") }
@@ -438,6 +445,9 @@ object ExeEmulatorApp {
                 host.showToast("Gaming Mode", "Aktifkan izin Shizuku dulu di Shizuku Hub")
             }
         }, LinearLayout.LayoutParams(-2, dp(context, 26)))
+
+        pluginBtnsScroll.addView(pluginBtnsRow)
+        pluginBar.addView(pluginBtnsScroll, LinearLayout.LayoutParams(-1, -2))
         root.addView(pluginBar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 10) })
 
         root.addView(UiKit.label(context, "Program .EXE Terpasang (C:\\Program Files):", 12f, UiKit.INK, bold = true),

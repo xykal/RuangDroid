@@ -124,17 +124,18 @@ class FloatingWindowManager(
         val dm = context.resources.displayMetrics
         val stageW = stage.width.takeIf { it > 0 } ?: (dm.widthPixels - dp(16))
         val stageH = stage.height.takeIf { it > 0 } ?: (dm.heightPixels - dp(72)).coerceAtLeast(dp(240))
-        val isNarrow = stageW < dp(520)
+        val isNarrow = stageW < dp(500)
+        val isShort = stageH < dp(360)
 
         val initW = if (isNarrow) {
             (stageW * 0.96f).toInt()
         } else {
-            min(dp(preferredWidthDp), (stageW * 0.88f).toInt()).coerceAtLeast(dp(270))
+            min(dp(preferredWidthDp), (stageW * 0.88f).toInt()).coerceAtLeast(dp(230))
         }
-        val initH = if (isNarrow) {
-            (stageH * 0.88f).toInt()
+        val initH = if (isNarrow || isShort) {
+            min(dp(preferredHeightDp), (stageH * 0.92f).toInt()).coerceAtLeast(dp(170))
         } else {
-            min(dp(preferredHeightDp), (stageH * 0.88f).toInt()).coerceAtLeast(dp(200))
+            min(dp(preferredHeightDp), (stageH * 0.88f).toInt()).coerceAtLeast(dp(190))
         }
 
         val cascade = (windows.size % 6) * dp(20)
@@ -317,7 +318,7 @@ class FloatingWindowManager(
             }
         }
 
-        winFrame.addView(header, LinearLayout.LayoutParams(-1, dp(36)))
+        winFrame.addView(header, LinearLayout.LayoutParams(-1, if (isShort) dp(32) else dp(36)))
 
         val bodyContainer = FrameLayout(context).apply {
             setBackgroundColor(Color.rgb(13, 20, 34))
@@ -361,8 +362,8 @@ class FloatingWindowManager(
                     val lp = winFrame.layoutParams as FrameLayout.LayoutParams
                     val sw = stage.width.coerceAtLeast(dp(300))
                     val sh = stage.height.coerceAtLeast(dp(220))
-                    val nw = (rsW + (ev.rawX - rsX).toInt()).coerceIn(dp(240), sw)
-                    val nh = (rsH + (ev.rawY - rsY).toInt()).coerceIn(dp(180), sh)
+                    val nw = (rsW + (ev.rawX - rsX).toInt()).coerceIn(dp(210), sw)
+                    val nh = (rsH + (ev.rawY - rsY).toInt()).coerceIn(dp(155), sh)
                     lp.width = nw
                     lp.height = nh
                     state.savedW = nw

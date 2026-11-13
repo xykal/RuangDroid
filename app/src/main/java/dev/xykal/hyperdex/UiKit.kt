@@ -29,17 +29,19 @@ object UiKit {
     val springInterpolator = OvershootInterpolator(0.9f)
 
     /**
-     * Resolution & DPI-normalized scaling unit.
-     * Blends physical density with actual viewport short-edge (reference 390dp)
-     * so custom DPI settings (320..640), compact phones, and large tablets all stay proportional,
-     * plus honors the user's Desktop UI Scale slider (75%..135%).
+     * Universal Multi-Screen & Multi-DPI Adaptive Unit:
+     * Guarantees every phone/tablet/monitor gets at least a ~395-unit virtual short-edge at 100% scale
+     * (so small 320dp/360dp phones or "Largest Display Size" settings NEVER look oversized / "kegedean"),
+     * while honoring low-DPI screens (0.60f floor) and the user's UI Scale slider (75%..135%).
      */
     fun unit(context: Context): Float {
         val dm = context.resources.displayMetrics
-        val shortEdgePx = min(dm.widthPixels, dm.heightPixels).toFloat().coerceAtLeast(320f)
-        val viewportUnit = shortEdgePx / 395f
-        val blended = (dm.density * 0.45f) + (viewportUnit * 0.55f)
-        return (blended * DesktopPrefs.cachedScaleFactor).coerceIn(1.1f, 5.0f)
+        val shortEdgePx = min(dm.widthPixels, dm.heightPixels).toFloat().coerceAtLeast(240f)
+        val viewportUnit = shortEdgePx / 398f
+        val blended = (dm.density * 0.42f) + (viewportUnit * 0.58f)
+        // Cap base unit to viewportUnit on compact phones so elements never exceed screen proportions
+        val adaptiveBase = if (shortEdgePx / dm.density < 385f) min(blended, viewportUnit) else blended
+        return (adaptiveBase * DesktopPrefs.cachedScaleFactor).coerceIn(0.60f, 5.0f)
     }
 
     fun dp(context: Context, value: Int): Int =

@@ -93,11 +93,13 @@ class OverlayKit(
         rawY: Float = -1f
     ) {
         val theme = prefs.currentTheme
-        val menuW = dp(245)
+        val hostW = hostLayer.width.takeIf { it > 0 } ?: context.resources.displayMetrics.widthPixels
+        val hostH = hostLayer.height.takeIf { it > 0 } ?: context.resources.displayMetrics.heightPixels
+        val menuW = min(dp(242), (hostW * 0.88f).toInt())
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setPadding(dp(8), dp(7), dp(8), dp(7))
             elevation = dp(16).toFloat()
             background = UiKit.gradientRounded(
                 context,
@@ -108,19 +110,20 @@ class OverlayKit(
         }
 
         card.addView(
-            UiKit.label(context, title, 12f, theme.accent, bold = true).apply {
-                setPadding(dp(10), dp(4), dp(10), dp(6))
+            UiKit.label(context, title, 11.8f, theme.accent, bold = true).apply {
+                setPadding(dp(10), dp(3), dp(10), dp(5))
             }
         )
         card.addView(View(context).apply {
             setBackgroundColor(Color.argb(40, 255, 255, 255))
         }, LinearLayout.LayoutParams(-1, dp(1)).apply { bottomMargin = dp(4) })
 
+        val itemsCol = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         for ((label, action) in items) {
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(10), dp(8), dp(10), dp(8))
+                setPadding(dp(10), dp(7), dp(10), dp(7))
                 background = UiKit.rounded(context, Color.argb(20, 255, 255, 255), 9)
                 UiKit.attachPressBounce(this, 0.97f)
                 setOnClickListener {
@@ -128,17 +131,24 @@ class OverlayKit(
                     action()
                 }
             }
-            row.addView(UiKit.label(context, label, 12f, UiKit.INK, bold = false))
-            card.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) })
+            row.addView(UiKit.label(context, label, 11.8f, UiKit.INK, bold = false))
+            itemsCol.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) })
         }
 
-        val hostW = hostLayer.width.takeIf { it > 0 } ?: context.resources.displayMetrics.widthPixels
-        val hostH = hostLayer.height.takeIf { it > 0 } ?: context.resources.displayMetrics.heightPixels
+        val estItemsH = dp(items.size * 35)
+        val maxScrollH = (hostH - dp(64)).coerceAtLeast(dp(90))
+        if (estItemsH > maxScrollH) {
+            val sc = ScrollView(context).apply { overScrollMode = View.OVER_SCROLL_NEVER }
+            sc.addView(itemsCol)
+            card.addView(sc, LinearLayout.LayoutParams(-1, maxScrollH))
+        } else {
+            card.addView(itemsCol, LinearLayout.LayoutParams(-1, -2))
+        }
 
         if (rawX >= 0f && rawY >= 0f) {
-            val estH = dp(46 + items.size * 38)
-            val clampedX = min(max(dp(8), rawX.toInt()), max(dp(8), hostW - menuW - dp(8)))
-            val clampedY = min(max(dp(8), rawY.toInt()), max(dp(8), hostH - estH - dp(8)))
+            val totalEstH = min(estItemsH + dp(46), maxScrollH + dp(46))
+            val clampedX = min(max(dp(6), rawX.toInt()), max(dp(6), hostW - menuW - dp(6)))
+            val clampedY = min(max(dp(6), rawY.toInt()), max(dp(6), hostH - totalEstH - dp(6)))
             showAnchoredPanel(
                 panel = card,
                 widthPx = menuW,
@@ -266,8 +276,10 @@ class OverlayKit(
         val scroll = ScrollView(context).apply { overScrollMode = View.OVER_SCROLL_NEVER }
         scroll.addView(listCol)
 
-        val maxH = (context.resources.displayMetrics.heightPixels * 0.42f).toInt().coerceAtLeast(dp(150))
-        card.addView(scroll, LinearLayout.LayoutParams(-1, maxH).apply { bottomMargin = dp(10) })
+        val availH = hostLayer.height.takeIf { it > 0 } ?: context.resources.displayMetrics.heightPixels
+        val chromeOverhead = dp(if (editableFolderName != null) 182 else 136)
+        val maxH = (availH - chromeOverhead).coerceIn(dp(78), dp(280))
+        card.addView(scroll, LinearLayout.LayoutParams(-1, maxH).apply { bottomMargin = dp(8) })
 
         fun renderItems(q: String) {
             listCol.removeAllViews()

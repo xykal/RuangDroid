@@ -250,10 +250,11 @@ object SystemFloatingOverlay {
             }, LinearLayout.LayoutParams(0, dp(26), 1f).apply { if (idx < 3) rightMargin = dp(4) })
         }
 
-        miniWindow.addView(UiKit.label(appCtx, "HyperDeX Floating Gaming & PC HUD", 11.5f, theme.accent, bold = true),
+        val hudW = kotlin.math.min(dp(225), (appCtx.resources.displayMetrics.widthPixels * 0.78f).toInt())
+        miniWindow.addView(UiKit.label(appCtx, "HyperDeX Floating Gaming & PC HUD", 11.2f, theme.accent, bold = true),
             LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         miniWindow.addView(vKeyRow, LinearLayout.LayoutParams(-1, -2))
-        miniWindow.addView(noteArea, LinearLayout.LayoutParams(dp(230), -2).apply { bottomMargin = dp(8) })
+        miniWindow.addView(noteArea, LinearLayout.LayoutParams(hudW, -2).apply { bottomMargin = dp(8) })
         miniWindow.addView(quickActions, LinearLayout.LayoutParams(-1, -2))
 
         fun syncExpanded() {

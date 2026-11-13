@@ -360,7 +360,10 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     }
 
     override fun refreshDesktopUI() {
-        taskbarHost.layoutParams = LinearLayout.LayoutParams(-1, dp(52))
+        val dm = resources.displayMetrics
+        val availHUnits = dm.heightPixels / UiKit.unit(this)
+        val tbHeight = if (availHUnits < 420f) dp(44) else dp(50)
+        taskbarHost.layoutParams = LinearLayout.LayoutParams(-1, tbHeight)
         applyOrientationAndBarsSafe()
         applyWallpaper()
         renderDesktopSurface()
@@ -463,7 +466,7 @@ class MainActivity : Activity(), DesktopHostCallbacks {
             orientation = LinearLayout.VERTICAL
         }
 
-        // Sleek Desktop Header Bar
+        // Sleek Responsive Desktop Header Bar (HorizontalScrollView prevents clipping on 320dp-360dp screens)
         val topStrip = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -471,32 +474,44 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         }
         val titleBadge = UiKit.label(
             this,
-            "HyperDeX Droid OS 4.0",
-            11.8f,
+            if (availWidthUnits < 430f) "HyperDeX 5.1" else "HyperDeX Ultimate OS 5.1",
+            11.4f,
             UiKit.INK,
             bold = true
         )
-        topStrip.addView(titleBadge, LinearLayout.LayoutParams(0, dp(26), 1f))
+        topStrip.addView(titleBadge, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(8) })
 
-        topStrip.addView(UiKit.chipButton(this, "Shield / Core", Color.argb(90, 16, 185, 129)) {
+        val actionsScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val actionsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        actionsRow.addView(UiKit.chipButton(this, "Shield / Core", Color.argb(90, 16, 185, 129)) {
             openNativeHub()
-        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
+        }, LinearLayout.LayoutParams(-2, dp(25)).apply { rightMargin = dp(5) })
 
-        topStrip.addView(UiKit.chipButton(this, "Shizuku / HUD", Color.argb(85, 79, 70, 229)) {
+        actionsRow.addView(UiKit.chipButton(this, "Shizuku / HUD", Color.argb(85, 79, 70, 229)) {
             openShizukuHub()
-        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
+        }, LinearLayout.LayoutParams(-2, dp(25)).apply { rightMargin = dp(5) })
 
-        topStrip.addView(UiKit.chipButton(this, "+ .EXE", Color.argb(85, 190, 24, 93)) {
+        actionsRow.addView(UiKit.chipButton(this, "+ .EXE", Color.argb(85, 190, 24, 93)) {
             openExeCenter(null)
-        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
+        }, LinearLayout.LayoutParams(-2, dp(25)).apply { rightMargin = dp(5) })
 
-        topStrip.addView(UiKit.chipButton(this, "+ Folder") {
+        actionsRow.addView(UiKit.chipButton(this, "+ Folder") {
             showCreateOrEditFolderWindow(null)
-        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
+        }, LinearLayout.LayoutParams(-2, dp(25)).apply { rightMargin = dp(5) })
 
-        topStrip.addView(UiKit.chipButton(this, "+ Shortcut") {
+        actionsRow.addView(UiKit.chipButton(this, "+ Shortcut") {
             showDesktopShortcutPickerWindow()
-        }, LinearLayout.LayoutParams(-2, dp(26)))
+        }, LinearLayout.LayoutParams(-2, dp(25)))
+
+        actionsScroll.addView(actionsRow)
+        topStrip.addView(actionsScroll, LinearLayout.LayoutParams(0, dp(26), 1f))
 
         leftDesktop.addView(topStrip)
 
@@ -795,62 +810,95 @@ class MainActivity : Activity(), DesktopHostCallbacks {
             bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 0.35f))
         }
 
+        val dm = resources.displayMetrics
+        val availWUnits = dm.widthPixels / UiKit.unit(this)
+        val availHUnits = dm.heightPixels / UiKit.unit(this)
+        val compactBar = availWUnits < 460f
+        val btnH = if (availHUnits < 420f) dp(30) else dp(33)
+
         // Vector Start Orb Button
         val startBtn = LinearLayout(this).apply {
             gravity = Gravity.CENTER
             background = UiKit.rounded(this@MainActivity, Color.argb(42, 131, 170, 255), 10)
             addView(ImageView(this@MainActivity).apply {
-                setImageDrawable(VectorIcons.get(this@MainActivity, "start_orb", dp(24)))
-            }, LinearLayout.LayoutParams(dp(22), dp(22)))
+                setImageDrawable(VectorIcons.get(this@MainActivity, "start_orb", dp(22)))
+            }, LinearLayout.LayoutParams(dp(20), dp(20)))
             UiKit.attachPressBounce(this, 0.88f)
             setOnClickListener { showStartMenuOverlay(focusSearch = false) }
         }
-        bar.addView(startBtn, LinearLayout.LayoutParams(dp(36), dp(34)).apply { rightMargin = dp(4) })
+        bar.addView(startBtn, LinearLayout.LayoutParams(dp(34), btnH).apply { rightMargin = dp(4) })
 
-        // Vector Search Pill
-        val searchBtn = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            background = UiKit.rounded(this@MainActivity, Color.argb(32, 215, 229, 255), 10)
-            setPadding(dp(8), 0, dp(9), 0)
-            addView(ImageView(this@MainActivity).apply {
-                setImageDrawable(VectorIcons.get(this@MainActivity, "search", dp(16), UiKit.MUTED))
-            }, LinearLayout.LayoutParams(dp(14), dp(14)))
-            if (isWideDesktop()) {
-                addView(UiKit.label(this@MainActivity, "  Cari", 10.8f, UiKit.MUTED))
-            }
-            UiKit.attachPressBounce(this, 0.92f)
-            setOnClickListener { showStartMenuOverlay(focusSearch = true) }
-        }
-        bar.addView(searchBtn, LinearLayout.LayoutParams(-2, dp(34)).apply { rightMargin = dp(6) })
-
-        // Virtual Desktop Workspace Switcher [1] [2] [3]
-        val wsBox = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = UiKit.rounded(this@MainActivity, Color.argb(26, 255, 255, 255), 9)
-            setPadding(dp(2), dp(2), dp(2), dp(2))
-        }
-        for (ws in 0..2) {
-            val activeWs = (ws == windowManager.currentWorkspace)
-            val wsBtn = UiKit.label(
-                this,
-                "${ws + 1}",
-                9.8f,
-                if (activeWs) Color.WHITE else UiKit.MUTED,
-                bold = true
-            ).apply {
+        // Vector Search Pill (hidden on ultra-narrow portrait so pinned/window tabs have generous room)
+        if (!compactBar) {
+            val searchBtn = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                background = UiKit.rounded(
-                    this@MainActivity,
-                    if (activeWs) theme.accent else Color.TRANSPARENT,
-                    7
-                )
-                setOnClickListener { windowManager.switchWorkspace(ws) }
+                background = UiKit.rounded(this@MainActivity, Color.argb(32, 215, 229, 255), 10)
+                setPadding(dp(8), 0, dp(9), 0)
+                addView(ImageView(this@MainActivity).apply {
+                    setImageDrawable(VectorIcons.get(this@MainActivity, "search", dp(16), UiKit.MUTED))
+                }, LinearLayout.LayoutParams(dp(14), dp(14)))
+                if (isWideDesktop()) {
+                    addView(UiKit.label(this@MainActivity, "  Cari", 10.6f, UiKit.MUTED))
+                }
+                UiKit.attachPressBounce(this, 0.92f)
+                setOnClickListener { showStartMenuOverlay(focusSearch = true) }
             }
-            wsBox.addView(wsBtn, LinearLayout.LayoutParams(dp(20), dp(26)).apply { if (ws < 2) rightMargin = dp(2) })
+            bar.addView(searchBtn, LinearLayout.LayoutParams(-2, btnH).apply { rightMargin = dp(5) })
         }
-        bar.addView(wsBox, LinearLayout.LayoutParams(-2, dp(32)).apply { rightMargin = dp(6) })
+
+        // Virtual Desktop Workspace Switcher: compact [D1] cycle pill on narrow portrait, full [1][2][3] on wide
+        if (compactBar) {
+            val curWs = windowManager.currentWorkspace
+            val wsCompact = UiKit.label(this, "D${curWs + 1}", 9.8f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER
+                background = UiKit.rounded(this@MainActivity, theme.accent, 8)
+                setOnClickListener {
+                    val next = (windowManager.currentWorkspace + 1) % 3
+                    windowManager.switchWorkspace(next)
+                    showToast("Virtual Desktop", "Workspace ${next + 1}")
+                }
+                setOnLongClickListener {
+                    overlays.showContextMenu(
+                        title = "Pilih Virtual Desktop",
+                        items = listOf(
+                            "Workspace 1" to { windowManager.switchWorkspace(0) },
+                            "Workspace 2" to { windowManager.switchWorkspace(1) },
+                            "Workspace 3" to { windowManager.switchWorkspace(2) }
+                        )
+                    )
+                    true
+                }
+            }
+            bar.addView(wsCompact, LinearLayout.LayoutParams(dp(28), btnH - dp(2)).apply { rightMargin = dp(4) })
+        } else {
+            val wsBox = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = UiKit.rounded(this@MainActivity, Color.argb(26, 255, 255, 255), 9)
+                setPadding(dp(2), dp(2), dp(2), dp(2))
+            }
+            for (ws in 0..2) {
+                val activeWs = (ws == windowManager.currentWorkspace)
+                val wsBtn = UiKit.label(
+                    this,
+                    "${ws + 1}",
+                    9.8f,
+                    if (activeWs) Color.WHITE else UiKit.MUTED,
+                    bold = true
+                ).apply {
+                    gravity = Gravity.CENTER
+                    background = UiKit.rounded(
+                        this@MainActivity,
+                        if (activeWs) theme.accent else Color.TRANSPARENT,
+                        7
+                    )
+                    setOnClickListener { windowManager.switchWorkspace(ws) }
+                }
+                wsBox.addView(wsBtn, LinearLayout.LayoutParams(dp(19), btnH - dp(6)).apply { if (ws < 2) rightMargin = dp(2) })
+            }
+            bar.addView(wsBox, LinearLayout.LayoutParams(-2, btnH - dp(2)).apply { rightMargin = dp(5) })
+        }
 
         // Pinned Icons + Running Window Tabs
         val midScroll = HorizontalScrollView(this).apply {
@@ -998,36 +1046,37 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         header.addView(ImageView(this).apply {
             setImageDrawable(VectorIcons.get(this@MainActivity, "start_orb", dp(22)))
         }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { rightMargin = dp(8) })
-        header.addView(UiKit.label(this, "HyperDeX Start", 15f, UiKit.INK, bold = true),
+        header.addView(UiKit.label(this, if (isWideDesktop()) "HyperDeX Start" else "Start", 14.2f, UiKit.INK, bold = true),
             LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(UiKit.chipButton(this, "Shield") {
             overlays.dismissOverlay(); openNativeHub()
-        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
+        }, LinearLayout.LayoutParams(-2, dp(25)).apply { rightMargin = dp(4) })
         header.addView(UiKit.chipButton(this, "Shizuku") {
             overlays.dismissOverlay(); openShizukuHub()
-        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
+        }, LinearLayout.LayoutParams(-2, dp(25)).apply { rightMargin = dp(4) })
         header.addView(UiKit.chipButton(this, "Settings") {
             overlays.dismissOverlay(); openControlPanel()
-        }, LinearLayout.LayoutParams(-2, dp(26)))
+        }, LinearLayout.LayoutParams(-2, dp(25)))
         panel.addView(header)
 
         val searchBox = EditText(this).apply {
             hint = "Cari aplikasi PC, .EXE, atau aplikasi terpasang…"
             setHintTextColor(UiKit.MUTED)
             setTextColor(UiKit.INK)
-            setTextSize(TypedValue.COMPLEX_UNIT_PX, UiKit.spPx(this@MainActivity, 12.5f))
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, UiKit.spPx(this@MainActivity, 12f))
             setSingleLine(true)
             background = UiKit.rounded(this@MainActivity, Color.argb(36, 215, 229, 255), 11)
             setPadding(dp(12), 0, dp(12), 0)
         }
-        panel.addView(searchBox, LinearLayout.LayoutParams(-1, dp(36)).apply {
-            topMargin = dp(8); bottomMargin = dp(8)
+        panel.addView(searchBox, LinearLayout.LayoutParams(-1, dp(34)).apply {
+            topMargin = dp(7); bottomMargin = dp(7)
         })
 
         val scroll = ScrollView(this).apply { overScrollMode = View.OVER_SCROLL_NEVER }
         val gridHolder = FrameLayout(this)
         scroll.addView(gridHolder)
-        val menuH = min(dp(300), (dm.heightPixels * 0.56f).toInt()).coerceAtLeast(dp(160))
+        val availStageH = overlayStage.height.takeIf { it > 0 } ?: (dm.heightPixels - dp(48))
+        val menuH = (availStageH - dp(104)).coerceIn(dp(85), dp(300))
         panel.addView(scroll, LinearLayout.LayoutParams(-1, menuH))
 
         val cols = if (isWideDesktop()) 5 else 4
@@ -1174,8 +1223,18 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         }, LinearLayout.LayoutParams(0, dp(30), 1f))
         card.addView(foot)
 
-        val w = if (isWideDesktop()) dp(345) else (dm.widthPixels * 0.94f).toInt()
-        overlays.showAnchoredPanel(card, widthPx = w, gravity = Gravity.BOTTOM or Gravity.END, marginX = dp(10), marginY = dp(6))
+        val availStageH = overlayStage.height.takeIf { it > 0 } ?: (dm.heightPixels - dp(48))
+        val finalPanel: View = if (availStageH < dp(325)) {
+            ScrollView(this).apply {
+                overScrollMode = View.OVER_SCROLL_NEVER
+                background = UiKit.gradientRounded(this@MainActivity, theme.panelColors, Color.argb(90, 255, 255, 255), 18)
+                card.background = null
+                addView(card)
+            }
+        } else card
+        val hCap = if (availStageH < dp(325)) (availStageH - dp(12)).coerceAtLeast(dp(140)) else FrameLayout.LayoutParams.WRAP_CONTENT
+        val w = if (isWideDesktop()) min(dp(345), (dm.widthPixels * 0.85f).toInt()) else (dm.widthPixels * 0.94f).toInt()
+        overlays.showAnchoredPanel(finalPanel, widthPx = w, heightPx = hCap, gravity = Gravity.BOTTOM or Gravity.END, marginX = dp(10), marginY = dp(6))
     }
 
     // ==================== FLOATING WINDOW LAUNCHERS ====================

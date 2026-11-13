@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -124,7 +124,7 @@ object BrowserAndMedia {
         val bookmarks = listOf(
             "Google" to "https://www.google.com",
             "YouTube" to "https://www.youtube.com",
-            "GitHub" to "https://github.com/xykal/RuangDroid",
+            "GitHub" to "https://github.com/xykal/HyperDeX",
             "Shizuku" to "https://github.com/RikkaApps/Shizuku/releases",
             "Winlator" to "https://github.com/brunodev85/winlator/releases"
         )
@@ -309,6 +309,19 @@ object BrowserAndMedia {
 
         toolBar.addView(UiKit.chipButton(context, "Clear") {
             strokes.clear(); bgBitmap = null; canvasView.invalidate()
+        }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
+
+        toolBar.addView(UiKit.chipButton(context, "Blur C++", Color.argb(95, 16, 185, 129)) {
+            val w = canvasView.width.coerceAtLeast(320)
+            val h = canvasView.height.coerceAtLeast(240)
+            val snap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            canvasView.draw(Canvas(snap))
+            if (NativeCore.ccLoaded) {
+                NativeCore.ccAcrylicBlurBitmap(snap, 10, 0)
+            }
+            strokes.clear()
+            bgBitmap = snap
+            canvasView.invalidate()
         }, LinearLayout.LayoutParams(-2, dp(context, 26)).apply { rightMargin = dp(context, 4) })
 
         toolBar.addView(UiKit.chipButton(context, "Simpan PNG", Color.argb(100, 37, 99, 235)) {

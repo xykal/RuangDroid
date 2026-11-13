@@ -1,19 +1,26 @@
-# RuangDroid Desktop OS (`v3.0.0`)
+# HyperDeX (`v4.0.0`) — Polyglot Android DeX / PC Desktop OS
 
-Launcher Android Full-Window bergaya Desktop PC / Windows 11 tanpa dialog/komponen UI bawaan Android, lengkap dengan **Custom Vector Icon Engine**, **Animasi Fluent & Aero Snap**, **Multi-DPI/Resolution Scaling**, serta **Integrasi Resmi Shizuku & Termux**.
+**HyperDeX** (`dev.xykal.hyperdex`) adalah sistem operasi launcher *Full-Window* bergaya PC Desktop / Samsung DeX / Windows 11 untuk Android yang dibangun dengan arsitektur **Polyglot 4 Bahasa (`Kotlin` + `Rust` + `C11` + `C++20`)**, nol dialog bawaan Android, integrasi **Shizuku & Termux**, serta proteksi **HyperShield Anti-Clone**.
 
-## Pembaruan Utama `v3.0.0`
-1. **100% Custom Desktop UI (Tanpa Dialog/Popup Bawaan Android):**
-   - Menghapus seluruh `AlertDialog`, `Dialog`, `SeekBar`, `CheckBox`, dan `Toast` bawaan Android.
-   - Start Menu, Quick Action Center, Context Menu klik-tahan, Input Prompt, Multi-Picker, Slider Volume/Skala, dan **Windows 11 Toast Notification** dirender murni di dalam *Custom Desktop Overlay Compositor*.
-2. **Procedural Vector Icon Engine & Animasi 60/120Hz (`VectorIcons.kt`):**
-   - Seluruh ikon sistem, tombol kontrol jendela (`Minimize`, `Maximize/Restore`, `Aero Snap`, `Close`), Start Orb, dan 11 aplikasi bawaan digambar vektor tajam dengan `LruCache` (tanpa emoji).
-   - Animasi *spring* saat buka/tutup/minimize/restore jendela, efek pantul sentuhan (*press bounce*), serta **Live Aero Snap Ghost Preview** saat menyeret jendela ke tepi layar kiri/kanan/atas.
-   - Akselerasi `LAYER_TYPE_HARDWARE` otomatis saat *drag/resize* jendela.
-3. **Responsif di Semua Resolusi, Rasio Layar & Custom DPI:**
-   - Unit skala hibrida otomatis menyesuaikan dimensi layar pendek & kerapatan piksel + penggunaan `COMPLEX_UNIT_PX` agar ukuran font sistem Android tidak merusak proporsi jendela.
-   - Dilengkapi **Slider Skala UI Desktop (`75%`–`135%`)** langsung di *Control Panel*.
-4. **Integrasi Shizuku (`rikka.shizuku`), Termux (`RUN_COMMAND`) & Custom System Floating HUD:**
-   - **Shizuku Bridge Resmi:** Buka kunci *Global Freeform Multi-Window* untuk semua aplikasi Android, ubah DPI layar sistem (`wm density`), luncurkan aplikasi via `am start --windowingMode 5`, dan jalankan perintah ADB (`rish <cmd>`) langsung dari Terminal maupun aplikasi **Shizuku & Termux Hub**.
-   - **Termux & Termux:X11 Bridge:** Kirim perintah bash langsung ke `RunCommandService` Termux dari Terminal (`termux <cmd>`) atau Shizuku Hub.
-   - **Custom System-Wide Floating PC HUD (`SYSTEM_ALERT_WINDOW`):** Jendela mengambang kustom RuangDroid yang tetap tampil di atas aplikasi eksternal (game/chat/Winlator) tanpa bingkai bawaan Android.
+---
+
+## Arsitektur Polyglot Custom Native Libraries (`v4.0.0`)
+
+| Modul | Bahasa | Output Binary | Fungsi Utama |
+|---|---|---|---|
+| **Desktop Compositor** | Kotlin | `classes.dex` (R8) | 4-Layer Full-Window UI, Aero Snap, Vector Icon Engine, Shizuku/Termux IPC |
+| **`rust_hypercore`** | **Rust 2021** | `librust_hypercore.so` | Constant-Time X.509 SHA-256 & HMAC-SHA256 Anti-Clone Attestation, File/Text SHA-256, Scientific Math Parser |
+| **`hyper_sys_c`** | **Pure C11** | `libhyper_sys_c.so` | Linux Kernel `/proc/stat` & `/proc/meminfo` Telemetry, CPU Core Clocks, `/proc/self/maps` Anti-Cloner Guard, CRC32/FNV1a-64 |
+| **`hyper_gfx_cc`** | **Modern C++20** | `libhyper_gfx_cc.so` | Separable 2-Pass Acrylic StackBlur (`jnigraphics`), PE32/PE64 `.EXE` Binary Dissector + Shannon Entropy, Build Quorum |
+
+---
+
+## Fitur Unggulan
+- **100% Custom Full-Window UI:** Tanpa `AlertDialog`, `SeekBar`, `CheckBox`, atau *popup* kaku bawaan Android.
+- **Responsif Semua Layar & Custom DPI:** Hybrid viewport/density scaling + slider skala UI `75%`–`135%`.
+- **HyperShield Anti-Clone Hard Lock:** Pinning sertifikat rilis resmi `4096-bit RSA` + `HMAC-SHA256` CI Seal via GitHub Actions Secrets di dalam binary Rust, C11, dan C++20.
+- **Shizuku + Termux + Custom System Floating HUD:** Unlock *Global Freeform Multi-Window*, peluncur aplikasi `--windowingMode 5`, pengubah DPI sistem (`wm density`), eksekusi `rish` & `termux`, serta jendela mini PC melayang di atas semua aplikasi.
+- **12 Aplikasi PC Bawaan:** *This PC (Explorer)*, *HyperShield & Native Core*, *Shizuku & Termux Hub*, *EXE & Wine Plugin Center*, *Desktop Web Browser*, *Polyglot Terminal CMD*, *Notepad*, *Rust Scientific Calculator*, *Paint Studio (C++ Blur)*, *Media Player*, *Task Manager*, dan *Control Panel*.
+
+## Download Rilis Resmi
+Unduh APK resmi yang telah ditandatangani kunci kriptografi asli di halaman **[Releases](https://github.com/xykal/HyperDeX/releases)**.

@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.content.Context
 import android.graphics.Color

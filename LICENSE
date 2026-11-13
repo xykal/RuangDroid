@@ -1,0 +1,19 @@
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007 — Official Attribution & Brand Notice
+
+Copyright (C) 2026 Xykal (https://github.com/xykal/HyperDeX)
+
+This program ("HyperDeX" / package "dev.xykal.hyperdex") is free software:
+you can study, inspect, and modify it under the terms of the GNU Affero General
+Public License as published by the Free Software Foundation, version 3 of the License.
+
+ADDITIONAL ATTRIBUTION & TRADEMARK TERMS (AGPLv3 Section 7):
+1. Preserve Author Attribution: Any derivative or modified version MUST visibly
+   retain attribution to the original HyperDeX project (https://github.com/xykal/HyperDeX)
+   and publish its complete corresponding source code under the same AGPLv3 license.
+2. No Misrepresentation / Fake Official Builds: You may NOT distribute modified,
+   re-signed, or repackaged APKs claiming to be official HyperDeX releases.
+   Official cryptographic build seals and X.509 signing keys are exclusive to
+   https://github.com/xykal/HyperDeX.
+
+Full license text: https://www.gnu.org/licenses/agpl-3.0.txt

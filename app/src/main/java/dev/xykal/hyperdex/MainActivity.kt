@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.app.Activity
 import android.app.ActivityManager
@@ -80,12 +80,27 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     private val scanExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var scanningApps = false
     private var wasImmersiveApplied = false
+    private var isLockedByShield = false
 
     private fun dp(v: Int): Int = UiKit.dp(this, v)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = DesktopPrefs(this)
+
+        // 3-Layer Polyglot Anti-Clone & Official Release Signature Hard Lock (Rust + C11 + C++20)
+        val verdict = NativeCore.verifyAppSecurity(this)
+        if (!verdict.verified) {
+            isLockedByShield = true
+            rootLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(NativeCore.buildHardLockShieldView(this@MainActivity, verdict), LinearLayout.LayoutParams(-1, -1))
+            }
+            setContentView(rootLayout)
+            applyOrientationAndBarsSafe()
+            return
+        }
+
         try {
             VirtualDrive.ensureInitialized(this)
         } catch (_: Throwable) {
@@ -142,6 +157,7 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     override fun onResume() {
         super.onResume()
         applyOrientationAndBarsSafe()
+        if (isLockedByShield) return
         renderTaskbar()
         triggerAsyncAppScan()
         if (prefs.systemOverlayEnabled && SystemFloatingOverlay.canDraw(this)) {
@@ -151,12 +167,17 @@ class MainActivity : Activity(), DesktopHostCallbacks {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        if (isLockedByShield) return
         overlays.dismissOverlay()
         refreshDesktopUI()
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (isLockedByShield) {
+            finishAffinity()
+            return
+        }
         if (overlays.hasOpenOverlay()) {
             overlays.dismissOverlay()
             return
@@ -292,9 +313,26 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         if (prefs.useCustomWallpaper) {
             val bmp = try { BitmapFactory.decodeFile(prefs.customWallpaperFile().absolutePath) } catch (_: Throwable) { null }
             if (bmp != null) {
-                wallpaperView.setImageBitmap(bmp)
+                wallpaperView.setImageBitmap(if (prefs.acrylicBlurWallpaper) NativeCore.safeApplyAcrylicBlur(bmp) else bmp)
                 return
             }
+        }
+        if (prefs.acrylicBlurWallpaper && NativeCore.ccLoaded) {
+            val art = Bitmap.createBitmap(360, 220, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(art)
+            GradientDrawable(GradientDrawable.Orientation.TL_BR, theme.bgColors).apply {
+                setBounds(0, 0, 360, 220)
+                draw(canvas)
+            }
+            val orbPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.argb(135, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent))
+            }
+            canvas.drawCircle(95f, 70f, 58f, orbPaint)
+            orbPaint.color = Color.argb(95, 255, 255, 255)
+            canvas.drawCircle(265f, 150f, 68f, orbPaint)
+            NativeCore.ccAcrylicBlurBitmap(art, 22, Color.argb(42, 8, 14, 26))
+            wallpaperView.setImageBitmap(art)
+            return
         }
         wallpaperView.setImageDrawable(GradientDrawable(GradientDrawable.Orientation.TL_BR, theme.bgColors))
     }
@@ -353,12 +391,16 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         }
         val titleBadge = UiKit.label(
             this,
-            "RuangDroid Desktop OS 3.0",
+            "HyperDeX Droid OS 4.0",
             11.8f,
             UiKit.INK,
             bold = true
         )
         topStrip.addView(titleBadge, LinearLayout.LayoutParams(0, dp(26), 1f))
+
+        topStrip.addView(UiKit.chipButton(this, "Shield / Core", Color.argb(90, 16, 185, 129)) {
+            openNativeHub()
+        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
 
         topStrip.addView(UiKit.chipButton(this, "Shizuku / HUD", Color.argb(85, 79, 70, 229)) {
             openShizukuHub()
@@ -525,11 +567,13 @@ class MainActivity : Activity(), DesktopHostCallbacks {
 
     private fun showDesktopBlankContextMenu() {
         overlays.showContextMenu(
-            title = "Menu Desktop RuangDroid",
+            title = "Menu Desktop HyperDeX",
             items = listOf(
                 "Buat Folder Baru" to { showCreateOrEditFolderWindow(null) },
                 "Tambah Shortcut Aplikasi" to { showDesktopShortcutPickerWindow() },
                 "Ganti Tema Berikutnya" to { prefs.cycleTheme(); refreshDesktopUI() },
+                "Toggle Acrylic Blur Wallpaper (C++)" to { prefs.acrylicBlurWallpaper = !prefs.acrylicBlurWallpaper; refreshDesktopUI() },
+                "HyperShield & Native Core (Rust/C/C++)" to { openNativeHub() },
                 "Skala & Pengaturan Layar" to { openControlPanel() },
                 "Shizuku & Floating HUD" to { openShizukuHub() },
                 "Buka Terminal CMD" to { openTerminal(null) }
@@ -614,11 +658,20 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         card.addView(
             UiKit.label(
                 this,
-                if (ShizukuBridge.hasPermission()) "Shizuku: Aktif" else "Shizuku: Standby",
-                10f,
-                if (ShizukuBridge.hasPermission()) Color.rgb(74, 222, 128) else UiKit.MUTED,
+                if (NativeCore.allLoaded) "Native: Rust + C11 + C++20" else "Native: Partial",
+                9.8f,
+                Color.rgb(52, 211, 153),
                 bold = true
             ).apply { setPadding(0, dp(3), 0, 0) }
+        )
+        card.addView(
+            UiKit.label(
+                this,
+                if (ShizukuBridge.hasPermission()) "Shizuku: Aktif" else "Shizuku: Standby",
+                9.8f,
+                if (ShizukuBridge.hasPermission()) Color.rgb(74, 222, 128) else UiKit.MUTED,
+                bold = true
+            ).apply { setPadding(0, dp(2), 0, 0) }
         )
 
         card.addView(View(this), LinearLayout.LayoutParams(-1, 0, 1f))
@@ -831,8 +884,11 @@ class MainActivity : Activity(), DesktopHostCallbacks {
         header.addView(ImageView(this).apply {
             setImageDrawable(VectorIcons.get(this@MainActivity, "start_orb", dp(22)))
         }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { rightMargin = dp(8) })
-        header.addView(UiKit.label(this, "RuangDroid Start", 15f, UiKit.INK, bold = true),
+        header.addView(UiKit.label(this, "HyperDeX Start", 15f, UiKit.INK, bold = true),
             LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(UiKit.chipButton(this, "Shield") {
+            overlays.dismissOverlay(); openNativeHub()
+        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
         header.addView(UiKit.chipButton(this, "Shizuku") {
             overlays.dismissOverlay(); openShizukuHub()
         }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(5) })
@@ -1012,6 +1068,7 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     private fun launchBuiltInByKey(key: String) {
         when (key) {
             "explorer" -> openExplorer(null)
+            "native_hub" -> openNativeHub()
             "shizuku_hub" -> openShizukuHub()
             "exe_center" -> openExeCenter(null)
             "browser" -> openBrowser(null)
@@ -1028,6 +1085,12 @@ class MainActivity : Activity(), DesktopHostCallbacks {
     override fun openExplorer(startDir: File?) {
         windowManager.openWindow("explorer", "File Explorer", "explorer", singleInstance = false, preferredWidthDp = 540, preferredHeightDp = 350) {
             ExplorerAndNotepad.buildExplorerView(this, this, it, startDir)
+        }
+    }
+
+    override fun openNativeHub() {
+        windowManager.openWindow("native_hub", "HyperShield & Native Core (Rust / C11 / C++20)", "native_hub", singleInstance = true, preferredWidthDp = 560, preferredHeightDp = 375) {
+            NativeCore.buildNativeHubView(this, prefs, this)
         }
     }
 

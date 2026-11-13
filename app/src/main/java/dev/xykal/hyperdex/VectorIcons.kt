@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -364,6 +364,30 @@ object VectorIcons {
                 c.drawArc(RectF(s * 0.26f, s * 0.42f, s * 0.74f, s * 0.90f), 220f, 100f, false, p)
                 p.style = Paint.Style.FILL
                 c.drawCircle(s * 0.50f, s * 0.74f, s * 0.07f, p)
+            }
+            "native_hub" -> {
+                // HyperShield & Native Polyglot Core (Emerald/Cyan Shield + Microchip Core)
+                baseSquircle(c, s, Color.rgb(5, 150, 105), Color.rgb(15, 23, 42))
+                val shield = Path().apply {
+                    moveTo(s * 0.50f, s * 0.19f)
+                    lineTo(s * 0.77f, s * 0.29f)
+                    lineTo(s * 0.74f, s * 0.57f)
+                    quadTo(s * 0.68f, s * 0.74f, s * 0.50f, s * 0.83f)
+                    quadTo(s * 0.32f, s * 0.74f, s * 0.26f, s * 0.57f)
+                    lineTo(s * 0.23f, s * 0.29f)
+                    close()
+                }
+                p.style = Paint.Style.FILL
+                p.color = Color.argb(65, 52, 211, 153)
+                c.drawPath(shield, p)
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = (s * 0.055f).coerceAtLeast(1.8f)
+                p.color = Color.rgb(110, 231, 183)
+                c.drawPath(shield, p)
+                // Inner core chip square
+                p.style = Paint.Style.FILL
+                p.color = Color.WHITE
+                c.drawRoundRect(RectF(s * 0.40f, s * 0.40f, s * 0.60f, s * 0.60f), s * 0.04f, s * 0.04f, p)
             }
             else -> {
                 baseSquircle(c, s, Color.rgb(59, 130, 246), Color.rgb(30, 64, 175))

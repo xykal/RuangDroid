@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.content.Context
 import android.graphics.Color
@@ -32,7 +32,7 @@ data class ThemePalette(
 )
 
 class DesktopPrefs(private val context: Context) {
-    private val prefs = context.getSharedPreferences("ruangdroid_prefs", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("hyperdex_prefs", Context.MODE_PRIVATE)
 
     companion object {
         @Volatile
@@ -115,6 +115,10 @@ class DesktopPrefs(private val context: Context) {
     var systemOverlayEnabled: Boolean
         get() = prefs.getBoolean("system_overlay_dock", false)
         set(value) = prefs.edit().putBoolean("system_overlay_dock", value).apply()
+
+    var acrylicBlurWallpaper: Boolean
+        get() = prefs.getBoolean("acrylic_blur_wp", false)
+        set(value) = prefs.edit().putBoolean("acrylic_blur_wp", value).apply()
 
     var uiScalePercent: Int
         get() = prefs.getInt("ui_scale_pct", 100).coerceIn(75, 135)

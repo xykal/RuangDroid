@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -238,7 +238,7 @@ object SystemFloatingOverlay {
             hide()
         }, LinearLayout.LayoutParams(-2, dp(30)))
 
-        miniWindow.addView(UiKit.label(appCtx, "RuangDroid Floating Overlay Window", 11.5f, theme.accent, bold = true),
+        miniWindow.addView(UiKit.label(appCtx, "HyperDeX Floating Overlay Window", 11.5f, theme.accent, bold = true),
             LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         miniWindow.addView(noteArea, LinearLayout.LayoutParams(dp(230), -2).apply { bottomMargin = dp(8) })
         miniWindow.addView(quickActions, LinearLayout.LayoutParams(-1, -2))
@@ -402,7 +402,7 @@ object SystemFloatingOverlay {
         }
         val ovText = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         ovText.addView(UiKit.label(context, "Custom Floating PC HUD (Di Atas Semua App)", 12f, UiKit.INK, bold = true))
-        ovText.addView(UiKit.label(context, "Tampilkan jendela mini RuangDroid custom di atas WhatsApp/Game/Termux tanpa UI bawaan Android", 10.5f, UiKit.MUTED, maxLines = 2))
+        ovText.addView(UiKit.label(context, "Tampilkan jendela mini HyperDeX custom di atas WhatsApp/Game/Termux tanpa UI bawaan Android", 10.5f, UiKit.MUTED, maxLines = 2))
         overlayCard.addView(ovText, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
 
         val ovBtn = UiKit.chipButton(context, if (prefs.systemOverlayEnabled && canDraw(context)) "AKTIF" else "AKTIFKAN", Color.argb(120, 99, 102, 241)) {

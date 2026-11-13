@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.content.Context
 import android.graphics.Color
@@ -25,6 +25,15 @@ object BuiltInApps {
             subtitle = "File Explorer C:\\",
             iconId = "explorer",
             accent = Color.rgb(245, 158, 11),
+            showOnDesktop = true,
+            pinnedOnTaskbar = true
+        ),
+        BuiltInPcApp(
+            key = "native_hub",
+            title = "HyperShield Core",
+            subtitle = "Rust, C11 & C++20 Engine",
+            iconId = "native_hub",
+            accent = Color.rgb(16, 185, 129),
             showOnDesktop = true,
             pinnedOnTaskbar = true
         ),

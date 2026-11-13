@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.app.ActivityManager
 import android.content.Context
@@ -93,11 +93,18 @@ object ToolsApps {
                     }
                     "=" -> {
                         if (expr.isNotBlank()) {
-                            val norm = expr.replace("×", "*").replace("÷", "/").replace("π", Math.PI.toString())
-                            val res = try { formatDouble(evalMath(norm)) } catch (_: Throwable) { "Syntax Error" }
-                            historyTv.text = "$expr ="
+                            val norm = expr.replace("×", "*").replace("÷", "/").replace("π", "pi")
+                            val rustRes = NativeCore.safeEvalMath(norm)
+                            val res = if (!rustRes.startsWith("ERR")) {
+                                rustRes
+                            } else {
+                                try {
+                                    formatDouble(evalMath(expr.replace("×", "*").replace("÷", "/").replace("π", Math.PI.toString())))
+                                } catch (_: Throwable) { "Syntax Error" }
+                            }
+                            historyTv.text = "$expr = (Rust Engine)"
                             screenTv.text = res
-                            if (res != "Syntax Error" && res != "Error") expr = res
+                            if (res != "Syntax Error" && !res.startsWith("ERR")) expr = res
                         }
                     }
                     "sin", "cos", "√" -> {
@@ -202,7 +209,7 @@ object ToolsApps {
             typeface = Typeface.MONOSPACE
             setTextSize(TypedValue.COMPLEX_UNIT_PX, UiKit.spPx(context, 11.5f))
             setTextColor(Color.rgb(134, 239, 172))
-            text = "RuangDroid Desktop Shell [v3.0.0 — DOS / Linux / Shizuku / Termux]\nKetik 'help' untuk daftar perintah lengkap.\n\n"
+            text = "HyperDeX Polyglot Shell [v4.0.0 — Kotlin / Rust / C11 / C++20 / Shizuku]\nKetik 'help' untuk daftar perintah lengkap.\n\n"
         }
         scroll.addView(outputTv)
 
@@ -246,18 +253,41 @@ object ToolsApps {
             when (cmd) {
                 "help" -> appendOut(
                     """
-                    Perintah RuangDroid Terminal v3.0:
+                    Perintah HyperDeX Polyglot Terminal v4.0:
                       dir / cd / mkdir / type / del / cls
-                      sysinfo / ver / tasklist
+                      native           Status modul Rust + C11 + C++20 & Anti-Clone Shield
+                      sysinfo          Telemetri Kernel /proc & CPU via C11 (libhyper_sys_c.so)
+                      bench            Benchmark kecepatan Rust SHA-256 + C11 Compute
+                      calc <rumus>     Kalkulator saintifik via Rust (contoh: calc 2^16 + sqrt(81))
+                      sha256 <teks>    Hash kriptografi SHA-256 via Rust (librust_hypercore.so)
                       rish <cmd>       Eksekusi perintah ADB/Root via Shizuku!
-                      shizuku <cmd>    Alias untuk rish (contoh: shizuku wm size)
                       termux <cmd>     Kirim perintah bash ke Termux RunCommandService!
-                      start <app>      explorer | browser | notepad | calc | paint | shizuku | exe
+                      start <app>      explorer | shield | browser | notepad | calc | paint | shizuku | exe
                       wine <file.exe>  Jalankan .exe di Floating Window
                     """.trimIndent()
                 )
                 "cls", "clear" -> outputTv.text = ""
-                "ver" -> appendOut("RuangDroid Full-Window OS v3.0.0 | Shizuku: ${ShizukuBridge.privilegeLabel()}")
+                "ver" -> appendOut("HyperDeX Droid OS v4.0.0 | Rust=${NativeCore.rustLoaded} C11=${NativeCore.cLoaded} C++20=${NativeCore.ccLoaded} | Shizuku: ${ShizukuBridge.privilegeLabel()}")
+                "native" -> {
+                    val v = NativeCore.verifyAppSecurity(context)
+                    appendOut("Shield Status : ${v.headline}")
+                    appendOut("Rust (.so)    : ${v.rustReport}")
+                    appendOut("C11 (.so)     : ${v.cEnvReport}")
+                    appendOut("C++20 (.so)   : ${v.ccQuorumReport}")
+                }
+                "bench" -> {
+                    val cOps = if (NativeCore.cLoaded) NativeCore.cCpuBenchScore(3_000_000) else 0L
+                    val rHash = if (NativeCore.rustLoaded) NativeCore.rustBenchSha256(30_000) else "offline"
+                    appendOut("C11 Compute   : $cOps kOps/sec\n$rHash")
+                }
+                "calc" -> {
+                    if (arg.isEmpty()) appendOut("Contoh: calc sqrt(144) + 2^10")
+                    else appendOut("= ${NativeCore.safeEvalMath(arg)}")
+                }
+                "sha256" -> {
+                    if (arg.isEmpty()) appendOut("Contoh: sha256 HyperDeX")
+                    else appendOut(if (NativeCore.rustLoaded) NativeCore.rustSha256Text(arg) else "Rust engine offline")
+                }
                 "title" -> Unit
                 "echo" -> appendOut(arg)
                 "rish", "shizuku" -> {
@@ -278,15 +308,13 @@ object ToolsApps {
                     }
                 }
                 "sysinfo" -> {
-                    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-                    val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
-                    val stat = StatFs(Environment.getDataDirectory().path)
                     val dm = context.resources.displayMetrics
                     appendOut("Device     : ${Build.MANUFACTURER} ${Build.MODEL} (API ${Build.VERSION.SDK_INT})")
                     appendOut("Display    : ${dm.widthPixels}x${dm.heightPixels} @ ${dm.densityDpi} dpi")
                     appendOut("Shizuku    : ${ShizukuBridge.privilegeLabel()}")
-                    appendOut(String.format(Locale.US, "Memory     : %.1f MB free / %.1f MB total", mi.availMem / 1048576.0, mi.totalMem / 1048576.0))
-                    appendOut(String.format(Locale.US, "Storage    : %.1f GB free / %.1f GB total", stat.availableBytes / 1073741824.0, stat.totalBytes / 1073741824.0))
+                    if (NativeCore.cLoaded) {
+                        appendOut(NativeCore.cReadKernelTelemetry())
+                    }
                 }
                 "tasklist" -> {
                     val wins = winManager.openWindows()
@@ -326,13 +354,14 @@ object ToolsApps {
                 }
                 "start" -> when (arg.lowercase(Locale.ROOT)) {
                     "explorer" -> host.openExplorer(cwd)
+                    "shield", "native", "core" -> host.openNativeHub()
                     "browser" -> host.openBrowser(null)
                     "notepad" -> host.openNotepad(null)
                     "calc", "calculator" -> host.openCalculator()
                     "paint" -> host.openPaint(null)
                     "shizuku", "termux" -> host.openShizukuHub()
                     "exe", "wine" -> host.openExeCenter(null)
-                    else -> appendOut("start explorer | browser | notepad | calc | paint | shizuku | exe")
+                    else -> appendOut("start explorer | shield | browser | notepad | calc | paint | shizuku | exe")
                 }
                 "wine" -> {
                     val target = if (arg.isNotEmpty()) File(cwd, arg).takeIf { it.exists() }
@@ -551,10 +580,13 @@ object ToolsApps {
         })
 
         val wpRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        wpRow.addView(UiKit.chipButton(context, "Pilih Foto Wallpaper Galeri", Color.argb(95, 37, 99, 235)) {
+        wpRow.addView(UiKit.chipButton(context, "Pilih Wallpaper Galeri", Color.argb(95, 37, 99, 235)) {
             host.pickCustomWallpaper()
         }, LinearLayout.LayoutParams(0, dp(context, 32), 1f).apply { rightMargin = dp(context, 6) })
-        wpRow.addView(UiKit.chipButton(context, "Buka Shizuku & Termux Hub", Color.argb(95, 99, 102, 241)) {
+        wpRow.addView(UiKit.chipButton(context, "HyperShield (Rust/C/C++)", Color.argb(95, 16, 185, 129)) {
+            host.openNativeHub()
+        }, LinearLayout.LayoutParams(0, dp(context, 32), 1f).apply { rightMargin = dp(context, 6) })
+        wpRow.addView(UiKit.chipButton(context, "Shizuku & Termux", Color.argb(95, 99, 102, 241)) {
             host.openShizukuHub()
         }, LinearLayout.LayoutParams(0, dp(context, 32), 1f))
         root.addView(wpRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 12) })
@@ -608,6 +640,13 @@ object ToolsApps {
             "Posisikan tombol Start & ikon aplikasi di tengah taskbar",
             { prefs.centerTaskbar },
             { prefs.centerTaskbar = !prefs.centerTaskbar; host.refreshDesktopUI() }
+        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 5) })
+
+        root.addView(toggleRow(
+            "Efek Acrylic Frosted Wallpaper (C++20 Native)",
+            "Proses StackBlur + Luminosity Tint langsung lewat libhyper_gfx_cc.so",
+            { prefs.acrylicBlurWallpaper },
+            { prefs.acrylicBlurWallpaper = !prefs.acrylicBlurWallpaper; host.refreshDesktopUI() }
         ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 8) })
 
         val iconScaleRow = LinearLayout(context).apply {

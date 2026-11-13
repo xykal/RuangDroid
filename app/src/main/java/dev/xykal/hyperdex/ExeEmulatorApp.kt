@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -103,9 +103,14 @@ object ExeEmulatorApp {
 
             var pKey: String? = null
             var pTitle: String? = null
-            val markerIdx = ascii.indexOf("RUANGDROID_EXE:")
-            if (markerIdx >= 0) {
-                val tail = ascii.substring(markerIdx + "RUANGDROID_EXE:".length).lineSequence().firstOrNull().orEmpty()
+            val tag = when {
+                ascii.contains("HYPERDEX_EXE:") -> "HYPERDEX_EXE:"
+                ascii.contains("RUANGDROID_EXE:") -> "RUANGDROID_EXE:"
+                else -> null
+            }
+            if (tag != null) {
+                val markerIdx = ascii.indexOf(tag)
+                val tail = ascii.substring(markerIdx + tag.length).lineSequence().firstOrNull().orEmpty()
                 val parts = tail.split("|", limit = 2)
                 pKey = parts.getOrNull(0)?.trim()
                 pTitle = parts.getOrNull(1)?.trim()
@@ -216,14 +221,24 @@ object ExeEmulatorApp {
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(context, 3); bottomMargin = dp(context, 8) }
         )
 
+        val nativePeReport = if (NativeCore.ccLoaded) {
+            try { NativeCore.ccAnalyzePeBinary(exeFile.absolutePath) } catch (_: Throwable) { "" }
+        } else ""
+        val nativeHashes = NativeCore.safeFileHashSummary(exeFile)
+
         val detailText = buildString {
-            appendLine("Header MZ Valid  : ${if (info.isValidMz) "YA (DOS MZ)" else "TIDAK"}")
-            appendLine("Header PE Valid  : ${if (info.isValidPe) "YA (${info.peFormat})" else "TIDAK"}")
-            appendLine("Arsitektur CPU   : ${info.arch}")
-            appendLine("Windows Subsystem: ${info.subsystem}")
-            appendLine("Section Count    : ${info.sectionCount}")
-            appendLine("Ukuran File      : ${exeFile.length() / 1024} KB")
-            append("Imported DLLs    : ${if (info.importedDlls.isEmpty()) "(Packed / None)" else info.importedDlls.joinToString(", ")}")
+            if (nativePeReport.isNotBlank()) {
+                appendLine(nativePeReport.trimEnd())
+                appendLine("--------------------------------------------------")
+            } else {
+                appendLine("Header MZ Valid  : ${if (info.isValidMz) "YA (DOS MZ)" else "TIDAK"}")
+                appendLine("Header PE Valid  : ${if (info.isValidPe) "YA (${info.peFormat})" else "TIDAK"}")
+                appendLine("Arsitektur CPU   : ${info.arch}")
+                appendLine("Windows Subsystem: ${info.subsystem}")
+                appendLine("Section Count    : ${info.sectionCount}")
+            }
+            appendLine(nativeHashes)
+            append("Imported DLLs   : ${if (info.importedDlls.isEmpty()) "(Packed / None)" else info.importedDlls.joinToString(", ")}")
         }
         root.addView(TextView(context).apply {
             text = detailText

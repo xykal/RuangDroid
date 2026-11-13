@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.app.Activity
 import android.app.Application
@@ -13,14 +13,13 @@ import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
 import kotlin.system.exitProcess
 
-class RuangDroidApp : Application() {
+class HyperDexApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val previous = Thread.getDefaultUncaughtExceptionHandler()
@@ -56,32 +55,34 @@ class CrashActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(16, 24, 40))
+            setBackgroundColor(Color.rgb(12, 18, 32))
             setPadding(dp(20), dp(24), dp(20), dp(20))
         }
 
-        root.addView(TextView(this).apply {
-            text = "⚠️ RuangDroid Recovery Mode"
-            textSize = 19f
+        val statusHeader = TextView(this).apply {
+            text = "HyperDeX Recovery Console"
+            textSize = 18f
             setTextColor(Color.rgb(245, 248, 255))
             typeface = Typeface.DEFAULT_BOLD
-        })
+        }
+        root.addView(statusHeader)
+
         root.addView(TextView(this).apply {
-            text = "Terjadi error tak terduga. Kamu bisa salin log atau reset pengaturan untuk langsung kembali ke Desktop."
-            textSize = 13f
+            text = "Terjadi kendala tak terduga. Kamu bisa salin log diagnostik atau reset preferensi untuk langsung kembali ke Desktop."
+            textSize = 12.5f
             setTextColor(Color.rgb(180, 195, 220))
             setPadding(0, dp(6), 0, dp(12))
         })
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(10, 15, 26))
+            setBackgroundColor(Color.rgb(8, 12, 22))
             setPadding(dp(12), dp(12), dp(12), dp(12))
         }
         scroll.addView(TextView(this).apply {
             text = trace
             textSize = 11f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.rgb(255, 165, 165))
+            setTextColor(Color.rgb(252, 165, 165))
         })
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
@@ -93,7 +94,7 @@ class CrashActivity : Activity() {
 
         fun btn(label: String, bg: Int, action: () -> Unit) = TextView(this).apply {
             text = label
-            textSize = 13f
+            textSize = 12.5f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             setBackgroundColor(bg)
@@ -102,14 +103,14 @@ class CrashActivity : Activity() {
             setOnClickListener { action() }
         }
 
-        row.addView(btn("📋 Copy Log", Color.rgb(48, 72, 115)) {
+        row.addView(btn("Copy Log", Color.rgb(48, 72, 115)) {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("RuangDroid Crash Log", trace))
-            Toast.makeText(this, "Log disalin", Toast.LENGTH_SHORT).show()
+            cm.setPrimaryClip(ClipData.newPlainText("HyperDeX Crash Log", trace))
+            statusHeader.text = "HyperDeX Recovery Console (Log Disalin)"
         }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(10) })
 
-        row.addView(btn("🔄 Reset & Buka Desktop", Color.rgb(37, 99, 235)) {
-            getSharedPreferences("ruangdroid_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        row.addView(btn("Reset & Buka Desktop", Color.rgb(37, 99, 235)) {
+            getSharedPreferences("hyperdex_prefs", Context.MODE_PRIVATE).edit().clear().commit()
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             finish()
         })
@@ -147,53 +148,42 @@ object VirtualDrive {
         val pf = programFilesDir(context)
         val inst = installersDir(context)
 
-        val welcome = File(docs, "Selamat_Datang_RuangDroid.txt")
+        val welcome = File(docs, "Selamat_Datang_HyperDeX.txt")
         if (!welcome.exists()) {
             welcome.writeText(
                 """
                 =====================================================
-                SELAMAT DATANG DI RUANGDROID DESKTOP OS v2.0
+                SELAMAT DATANG DI HYPERDEX DROID OS v4.0
                 =====================================================
-                Fitur Utama:
-                1. Multi-Window Floating PC:
-                   - Geser jendela lewat Title Bar atas
-                   - Ubah ukuran lewat pojok kanan bawah (◢)
-                   - Minimize (—) ke Taskbar, Maximize (▢), atau Close (✕)
-                2. Aplikasi Bawaan Lengkap:
-                   - File Explorer, Web Browser, Notepad, Paint Studio,
-                     Calculator, Command Prompt, Media Player,
-                     Task Manager, Control Panel, dan EXE/Wine Plugin.
-                3. Dukungan File .EXE & Wine Plugin:
-                   - Buka folder C:\Installers di File Explorer atau
-                     buka aplikasi "EXE & Wine Plugin" untuk meng-install
-                     dan menjalankan paket .exe bawaan maupun import .exe
-                     dari penyimpanan Android kamu.
+                Arsitektur Polyglot Native:
+                - Kotlin Compositor : Custom Full-Window UI & Aero Snap
+                - Rust Core (.so)   : SHA-256 / HMAC Anti-Clone Shield & Math Engine
+                - C11 Core (.so)    : Kernel /proc Telemetry, CRC32 & Process Guard
+                - C++20 Core (.so)  : Acrylic StackBlur & PE32/PE64 Binary Dissector
+                - Shizuku & Termux  : Global Freeform Window, DPI Tweaker & Shell
                 """.trimIndent()
             )
         }
 
-        val batFile = File(inst, "System_Check.bat")
+        val batFile = File(inst, "HyperDeX_Diagnostics.bat")
         if (!batFile.exists()) {
             batFile.writeText(
                 """
                 @echo off
-                title RuangDroid Diagnostic Script
-                echo [OK] Checking Virtual Drive C:\ ...
-                echo [OK] Checking Multi-Window Compositor ...
-                echo [OK] Checking PE32 / Wine Bridge Subsystem ...
+                title HyperDeX Polyglot Diagnostic Script
                 ver
+                native
                 sysinfo
-                echo Done! Semua sistem berjalan normal.
+                bench
+                echo Semua modul Kotlin + Rust + C11 + C++20 berjalan optimal!
                 """.trimIndent()
             )
         }
 
-        // Seed portable PE32 .exe installers so user can install & run .exe apps out of the box
         seedPortableExe(File(inst, "Minesweeper_XP.exe"), "minesweeper", "Minesweeper Classic PC", x64 = false)
         seedPortableExe(File(inst, "Arkanoid_DX.exe"), "arkanoid", "Arkanoid Breakout DX", x64 = true)
-        seedPortableExe(File(inst, "WinCalc_Sci.exe"), "calculator", "Windows Scientific Calc", x64 = false)
+        seedPortableExe(File(inst, "WinCalc_Sci.exe"), "calculator", "Windows Scientific Calc", x64 = true)
 
-        // Pre-install Minesweeper into Program Files as a ready example
         val preInstalled = File(pf, "Minesweeper/Minesweeper_XP.exe")
         if (!preInstalled.exists()) {
             preInstalled.parentFile?.mkdirs()
@@ -202,45 +192,60 @@ object VirtualDrive {
     }
 
     /**
-     * Generates a valid MZ + PE32/PE32+ header binary containing embedded RuangDroid Portable metadata
-     * so PE binary inspection shows authentic PE headers AND the built-in EXE subsystem can execute it natively.
+     * Generates a valid MZ + PE32/PE32+ header + authentic COFF Section Table (.text, .rdata)
+     * so C++20 libhyper_gfx_cc.so dissects real PE sections, RVAs, and entropy.
      */
     fun seedPortableExe(target: File, appKey: String, title: String, x64: Boolean) {
         if (target.exists()) return
         val out = ByteArrayOutputStream()
-        val buf = ByteArray(512)
-        // DOS Header 'MZ'
+        val buf = ByteArray(768)
+
+        fun writeU16(off: Int, v: Int) {
+            buf[off] = (v and 0xFF).toByte()
+            buf[off + 1] = ((v ushr 8) and 0xFF).toByte()
+        }
+        fun writeU32(off: Int, v: Int) {
+            buf[off] = (v and 0xFF).toByte()
+            buf[off + 1] = ((v ushr 8) and 0xFF).toByte()
+            buf[off + 2] = ((v ushr 16) and 0xFF).toByte()
+            buf[off + 3] = ((v ushr 24) and 0xFF).toByte()
+        }
+
+        // DOS Header 'MZ' + e_lfanew = 0x80
         buf[0] = 'M'.code.toByte()
         buf[1] = 'Z'.code.toByte()
-        // e_lfanew at offset 0x3C -> 0x80
-        buf[0x3C] = 0x80.toByte()
-        // PE Signature 'PE\0\0' at 0x80
+        writeU32(0x3C, 0x80)
+
+        // NT Signature 'PE\0\0'
         buf[0x80] = 'P'.code.toByte()
         buf[0x81] = 'E'.code.toByte()
-        buf[0x82] = 0
-        buf[0x83] = 0
-        // COFF Machine: 0x8664 (AMD64) or 0x014C (i386)
-        if (x64) {
-            buf[0x84] = 0x64.toByte()
-            buf[0x85] = 0x86.toByte()
-        } else {
-            buf[0x84] = 0x4C.toByte()
-            buf[0x85] = 0x01.toByte()
-        }
-        // NumberOfSections = 2
-        buf[0x86] = 2
-        // SizeOfOptionalHeader
-        buf[0x94] = if (x64) 0xF0.toByte() else 0xE0.toByte()
-        // Characteristics: EXECUTABLE_IMAGE (0x0002)
-        buf[0x96] = 0x02
-        // Optional Header Magic at 0x98: PE32 (0x010B) or PE32+ (0x020B)
-        buf[0x98] = 0x0B
-        buf[0x99] = if (x64) 0x02 else 0x01
-        // Subsystem at OptionalHeader + 0x44 (0xDC): WINDOWS_GUI (2)
-        buf[0xDC] = 0x02
+        writeU16(0x84, if (x64) 0x8664 else 0x014C)
+        writeU16(0x86, 2) // 2 COFF sections (.text, .rdata)
+        val optSize = if (x64) 0xF0 else 0xE0
+        writeU16(0x94, optSize)
+        writeU16(0x96, 0x0022) // EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE
+
+        // Optional Header at 0x98
+        val optOff = 0x98
+        writeU16(optOff, if (x64) 0x020B else 0x010B)
+        writeU32(optOff + 16, 0x1000) // AddressOfEntryPoint RVA
+        writeU16(optOff + 68, 2)      // Subsystem = WINDOWS_GUI
+
+        // COFF Section Table at optOff + optSize
+        val sec0 = optOff + optSize
+        ".text".toByteArray().copyInto(buf, sec0)
+        writeU32(sec0 + 8, 0x0800)  // VirtualSize
+        writeU32(sec0 + 12, 0x1000) // VirtualAddress
+        writeU32(sec0 + 16, 0x0200) // SizeOfRawData
+
+        val sec1 = sec0 + 40
+        ".rdata".toByteArray().copyInto(buf, sec1)
+        writeU32(sec1 + 8, 0x0400)
+        writeU32(sec1 + 12, 0x2000)
+        writeU32(sec1 + 16, 0x0200)
 
         out.write(buf)
-        val meta = "\nKERNEL32.dll\u0000USER32.dll\u0000GDI32.dll\u0000RUANGDROID_EXE:$appKey|$title\n"
+        val meta = "\nKERNEL32.dll\u0000USER32.dll\u0000GDI32.dll\u0000HYPERDEX_EXE:$appKey|$title\n"
         out.write(meta.toByteArray(Charsets.UTF_8))
         target.writeBytes(out.toByteArray())
     }

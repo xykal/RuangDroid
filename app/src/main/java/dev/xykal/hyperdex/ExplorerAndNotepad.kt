@@ -1,4 +1,4 @@
-package com.example.ruangdroid
+package dev.xykal.hyperdex
 
 import android.content.Context
 import android.graphics.Color
@@ -36,6 +36,7 @@ interface DesktopHostCallbacks {
     fun openTaskManager()
     fun openControlPanel()
     fun openShizukuHub()
+    fun openNativeHub()
     fun openExeCenter(targetExe: File? = null)
     fun pickExternalExeFile()
     fun pickCustomWallpaper()
@@ -135,28 +136,35 @@ object ExplorerAndNotepad {
                             }
                         }
                         setOnLongClickListener {
+                            val menuList = mutableListOf(
+                                "Buka Item" to { performClick() },
+                                "Salin (Copy)" to {
+                                    clipboardFile = f
+                                    host.showToast("Clipboard Explorer", "Disalin: ${f.name}")
+                                }
+                            )
+                            if (f.isFile) {
+                                menuList.add("Cek Hash SHA-256 & CRC32 (Rust/C)" to {
+                                    val report = NativeCore.safeFileHashSummary(f)
+                                    host.overlays.showInputPrompt("Hasil Hash Native (${f.name})", report, "", "Tutup") {}
+                                })
+                            }
+                            menuList.add("Ubah Nama (Rename)" to {
+                                host.overlays.showInputPrompt("Ubah Nama File/Folder", f.name) { newName ->
+                                    if (newName.isNotEmpty()) {
+                                        f.renameTo(File(currentDir, newName))
+                                        renderDir()
+                                    }
+                                }
+                            })
+                            menuList.add("Hapus Permanen" to {
+                                f.deleteRecursively()
+                                renderDir()
+                                host.refreshDesktopUI()
+                            })
                             host.overlays.showContextMenu(
                                 title = f.name,
-                                items = listOf(
-                                    "Buka Item" to { performClick() },
-                                    "Salin (Copy)" to {
-                                        clipboardFile = f
-                                        host.showToast("Clipboard Explorer", "Disalin: ${f.name}")
-                                    },
-                                    "Ubah Nama (Rename)" to {
-                                        host.overlays.showInputPrompt("Ubah Nama File/Folder", f.name) { newName ->
-                                            if (newName.isNotEmpty()) {
-                                                f.renameTo(File(currentDir, newName))
-                                                renderDir()
-                                            }
-                                        }
-                                    },
-                                    "Hapus Permanen" to {
-                                        f.deleteRecursively()
-                                        renderDir()
-                                        host.refreshDesktopUI()
-                                    }
-                                )
+                                items = menuList
                             )
                             true
                         }

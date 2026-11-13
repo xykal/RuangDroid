@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer Isometric Hexagonal Titanium Frame (Safe Zone: 26..82) -->
+    <path
+        android:fillColor="#14FFFFFF"
+        android:strokeColor="#4D94A3B8"
+        android:strokeWidth="1.2"
+        android:pathData="M54,24 L79,38.5 L79,69.5 L54,84 L29,69.5 L29,38.5 Z" />
+
+    <!-- Left Vertical Titanium Pillar of 'H' -->
+    <path android:pathData="M36,36 L44,36 L44,72 L36,72 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="36"
+                android:startY="36"
+                android:endX="44"
+                android:endY="72"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFF8FAFC" />
+                <item android:offset="1.0" android:color="#FF94A3B8" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Diagonal 'X' Forward Cyan-Tungsten Blade -->
+    <path android:pathData="M46,36 L54.5,36 L72,72 L63.5,72 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="46"
+                android:startY="36"
+                android:endX="72"
+                android:endY="72"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF38BDF8" />
+                <item android:offset="0.55" android:color="#FF0EA5E9" />
+                <item android:offset="1.0" android:color="#FF6366F1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Diagonal 'X' Counter Titanium Blade + H Crossbar Bridge -->
+    <path android:pathData="M63.5,36 L72,36 L54.5,72 L46,72 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="72"
+                android:startY="36"
+                android:endX="46"
+                android:endY="72"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFF8FAFC" />
+                <item android:offset="1.0" android:color="#FFCBD5E1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Horizontal Precision Bridge connecting H Pillar into X Core -->
+    <path
+        android:fillColor="#FFF1F5F9"
+        android:pathData="M42,50.5 L59,50.5 L56.5,57.5 L42,57.5 Z" />
+
+    <!-- Micro Cyan Core Node -->
+    <path
+        android:fillColor="#FF38BDF8"
+        android:pathData="M54,28.5 L56.5,31 L54,33.5 L51.5,31 Z" />
+</vector>

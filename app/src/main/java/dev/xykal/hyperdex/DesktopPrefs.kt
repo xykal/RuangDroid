@@ -36,67 +36,58 @@ class DesktopPrefs(private val context: Context) {
 
     companion object {
         @Volatile
-        var cachedScaleFactor: Float = 1.0f
+        var cachedScaleFactor: Float = 0.84f
     }
 
     init {
-        cachedScaleFactor = (prefs.getInt("ui_scale_pct", 100).coerceIn(75, 135)) / 100f
+        cachedScaleFactor = (prefs.getInt("ui_scale_pct", 84).coerceIn(55, 135)) / 100f
     }
 
     val themes = listOf(
         ThemePalette(
-            name = "Win11 Bloom",
-            bgColors = intArrayOf(Color.rgb(10, 22, 48), Color.rgb(20, 44, 88), Color.rgb(32, 66, 120)),
-            accent = Color.rgb(96, 165, 250),
-            taskbarBg = Color.argb(232, 10, 16, 30),
-            panelColors = intArrayOf(Color.rgb(19, 30, 54), Color.rgb(13, 20, 38)),
-            windowHeaderActive = Color.rgb(23, 39, 70),
-            windowHeaderInactive = Color.rgb(16, 25, 44)
-        ),
-        ThemePalette(
-            name = "DeX Obsidian",
-            bgColors = intArrayOf(Color.rgb(14, 16, 22), Color.rgb(25, 29, 39), Color.rgb(36, 41, 54)),
-            accent = Color.rgb(129, 140, 248),
-            taskbarBg = Color.argb(238, 12, 14, 20),
-            panelColors = intArrayOf(Color.rgb(24, 27, 36), Color.rgb(16, 18, 25)),
-            windowHeaderActive = Color.rgb(32, 36, 50),
-            windowHeaderInactive = Color.rgb(20, 23, 32)
-        ),
-        ThemePalette(
-            name = "Aurora Emerald",
-            bgColors = intArrayOf(Color.rgb(7, 29, 35), Color.rgb(14, 50, 56), Color.rgb(20, 70, 72)),
-            accent = Color.rgb(52, 211, 153),
-            taskbarBg = Color.argb(235, 8, 20, 25),
-            panelColors = intArrayOf(Color.rgb(14, 40, 46), Color.rgb(9, 26, 31)),
-            windowHeaderActive = Color.rgb(17, 52, 58),
-            windowHeaderInactive = Color.rgb(11, 34, 40)
-        ),
-        ThemePalette(
-            name = "Cyber Neon",
-            bgColors = intArrayOf(Color.rgb(28, 14, 44), Color.rgb(52, 22, 66), Color.rgb(76, 30, 70)),
-            accent = Color.rgb(244, 114, 182),
-            taskbarBg = Color.argb(235, 19, 10, 29),
-            panelColors = intArrayOf(Color.rgb(38, 19, 50), Color.rgb(24, 12, 34)),
-            windowHeaderActive = Color.rgb(54, 25, 68),
-            windowHeaderInactive = Color.rgb(32, 16, 42)
-        ),
-        ThemePalette(
-            name = "XP Bliss Modern",
-            bgColors = intArrayOf(Color.rgb(12, 58, 108), Color.rgb(22, 92, 136), Color.rgb(30, 112, 92)),
-            accent = Color.rgb(74, 222, 128),
-            taskbarBg = Color.argb(236, 12, 38, 78),
-            panelColors = intArrayOf(Color.rgb(16, 48, 90), Color.rgb(11, 32, 64)),
-            windowHeaderActive = Color.rgb(22, 68, 130),
-            windowHeaderInactive = Color.rgb(16, 44, 86)
-        ),
-        ThemePalette(
-            name = "Nordic Frost",
-            bgColors = intArrayOf(Color.rgb(26, 36, 52), Color.rgb(40, 54, 76), Color.rgb(52, 70, 96)),
+            name = "Graphite Titanium",
+            bgColors = intArrayOf(Color.rgb(9, 11, 16), Color.rgb(15, 19, 27), Color.rgb(21, 26, 36)),
             accent = Color.rgb(56, 189, 248),
-            taskbarBg = Color.argb(235, 16, 23, 35),
-            panelColors = intArrayOf(Color.rgb(28, 38, 56), Color.rgb(18, 26, 40)),
-            windowHeaderActive = Color.rgb(36, 50, 72),
-            windowHeaderInactive = Color.rgb(24, 34, 50)
+            taskbarBg = Color.argb(242, 11, 13, 18),
+            panelColors = intArrayOf(Color.rgb(22, 25, 34), Color.rgb(16, 18, 25)),
+            windowHeaderActive = Color.rgb(24, 28, 38),
+            windowHeaderInactive = Color.rgb(17, 20, 27)
+        ),
+        ThemePalette(
+            name = "Carbon Monochrome",
+            bgColors = intArrayOf(Color.rgb(10, 11, 13), Color.rgb(18, 20, 24), Color.rgb(26, 29, 35)),
+            accent = Color.rgb(203, 213, 225),
+            taskbarBg = Color.argb(244, 10, 11, 14),
+            panelColors = intArrayOf(Color.rgb(23, 25, 30), Color.rgb(16, 17, 21)),
+            windowHeaderActive = Color.rgb(26, 29, 35),
+            windowHeaderInactive = Color.rgb(18, 20, 24)
+        ),
+        ThemePalette(
+            name = "Obsidian Emerald",
+            bgColors = intArrayOf(Color.rgb(8, 13, 12), Color.rgb(13, 22, 20), Color.rgb(18, 30, 27)),
+            accent = Color.rgb(52, 211, 153),
+            taskbarBg = Color.argb(242, 9, 14, 13),
+            panelColors = intArrayOf(Color.rgb(18, 26, 24), Color.rgb(13, 19, 18)),
+            windowHeaderActive = Color.rgb(20, 30, 28),
+            windowHeaderInactive = Color.rgb(14, 21, 20)
+        ),
+        ThemePalette(
+            name = "Tungsten Amber",
+            bgColors = intArrayOf(Color.rgb(13, 11, 9), Color.rgb(22, 18, 15), Color.rgb(30, 25, 20)),
+            accent = Color.rgb(245, 158, 11),
+            taskbarBg = Color.argb(242, 13, 11, 10),
+            panelColors = intArrayOf(Color.rgb(26, 22, 19), Color.rgb(18, 15, 13)),
+            windowHeaderActive = Color.rgb(30, 25, 21),
+            windowHeaderInactive = Color.rgb(20, 17, 15)
+        ),
+        ThemePalette(
+            name = "Nordic Slate",
+            bgColors = intArrayOf(Color.rgb(14, 19, 27), Color.rgb(22, 30, 42), Color.rgb(30, 40, 56)),
+            accent = Color.rgb(129, 161, 193),
+            taskbarBg = Color.argb(242, 13, 17, 24),
+            panelColors = intArrayOf(Color.rgb(24, 31, 43), Color.rgb(17, 22, 31)),
+            windowHeaderActive = Color.rgb(28, 36, 50),
+            windowHeaderInactive = Color.rgb(19, 25, 35)
         )
     )
 
@@ -121,20 +112,44 @@ class DesktopPrefs(private val context: Context) {
         set(value) = prefs.edit().putBoolean("acrylic_blur_wp", value).apply()
 
     var liveShaderWallpaper: Boolean
-        get() = prefs.getBoolean("live_shader_wp", true) // OpenGL ES 3.0 GPU Aurora Shader on by default in v5.0!
+        get() = prefs.getBoolean("live_shader_wp", false) // Clean matte Graphite default; toggleable in Settings
         set(value) = prefs.edit().putBoolean("live_shader_wp", value).apply()
 
     var uiScalePercent: Int
-        get() = prefs.getInt("ui_scale_pct", 100).coerceIn(75, 135)
+        get() = prefs.getInt("ui_scale_pct", 84).coerceIn(55, 135)
         set(value) {
-            val v = value.coerceIn(75, 135)
+            val v = value.coerceIn(55, 135)
             cachedScaleFactor = v / 100f
             prefs.edit().putInt("ui_scale_pct", v).apply()
         }
 
     var iconScale: Int
-        get() = prefs.getInt("icon_scale", 1).coerceIn(0, 2)
-        set(value) = prefs.edit().putInt("icon_scale", value.coerceIn(0, 2)).apply()
+        get() = prefs.getInt("icon_scale", 0).coerceIn(0, 3) // 0=Micro(default), 1=Small, 2=Medium, 3=Large
+        set(value) = prefs.edit().putInt("icon_scale", value.coerceIn(0, 3)).apply()
+
+    var taskbarHeightDp: Int
+        get() = prefs.getInt("taskbar_height_dp", 34).coerceIn(26, 46)
+        set(value) = prefs.edit().putInt("taskbar_height_dp", value.coerceIn(26, 46)).apply()
+
+    var flushTaskbar: Boolean
+        get() = prefs.getBoolean("flush_taskbar", true)
+        set(value) = prefs.edit().putBoolean("flush_taskbar", value).apply()
+
+    var compactTaskbarIconsOnly: Boolean
+        get() = prefs.getBoolean("compact_tb_icons", false)
+        set(value) = prefs.edit().putBoolean("compact_tb_icons", value).apply()
+
+    var onboardingCompleted: Boolean
+        get() = prefs.getBoolean("onboarding_v6_done", false)
+        set(value) = prefs.edit().putBoolean("onboarding_v6_done", value).apply()
+
+    var launcherLockEnabled: Boolean
+        get() = prefs.getBoolean("launcher_lock_enabled", true)
+        set(value) = prefs.edit().putBoolean("launcher_lock_enabled", value).apply()
+
+    var launcherLockPin: String
+        get() = prefs.getString("launcher_lock_pin", "") ?: ""
+        set(value) = prefs.edit().putString("launcher_lock_pin", value.trim()).apply()
 
     var themeIndex: Int
         get() = prefs.getInt("theme_index", 0).coerceIn(0, themes.lastIndex)

@@ -516,7 +516,7 @@ object ToolsApps {
         return root
     }
 
-    // ==================== 4. CONTROL PANEL (SCALE, DPI, THEME, TASKBAR) ====================
+    // ==================== 4. CONTROL PANEL (MICRO SCALE, TASKBAR, LAUNCHER LOCK & THEME) ====================
     fun buildControlPanelView(
         context: Context,
         prefs: DesktopPrefs,
@@ -525,18 +525,85 @@ object ToolsApps {
         val theme = prefs.currentTheme
         val scroll = ScrollView(context).apply {
             isFillViewport = true
-            setBackgroundColor(Color.rgb(12, 18, 32))
+            setBackgroundColor(Color.rgb(14, 17, 23))
         }
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 14))
+            setPadding(dp(context, 12), dp(context, 10), dp(context, 12), dp(context, 12))
         }
 
-        // 1. Live Responsive UI Display Scaling Slider
+        // 0. DEFAULT LAUNCHER & HARD LOCK GUARD CARD
+        val isHome = host.isDefaultHomeActive()
+        val lockCard = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UiKit.strokeRounded(
+                context,
+                Color.rgb(20, 24, 33),
+                if (isHome && prefs.launcherLockEnabled) Color.argb(120, 52, 211, 153) else Color.argb(45, 255, 255, 255),
+                8
+            )
+            setPadding(dp(context, 10), dp(context, 8), dp(context, 10), dp(context, 8))
+        }
+        lockCard.addView(
+            UiKit.label(
+                context,
+                if (isHome && prefs.launcherLockEnabled) "Launcher Lock: AKTIF (Terkunci di HyperDeX — Launcher Bawaan Diblokir)"
+                else if (isHome) "Default Launcher: HyperDeX (Mode Kunci Mati)"
+                else "Default Launcher: Belum Diset ke HyperDeX",
+                10.8f,
+                if (isHome && prefs.launcherLockEnabled) Color.rgb(74, 222, 128) else Color.rgb(250, 204, 21),
+                bold = true
+            )
+        )
+        lockCard.addView(
+            UiKit.label(
+                context,
+                "Saat HyperDeX dijadikan Default Home, pengguna tidak bisa keluar ke launcher bawaan HP sebelum menekan tombol 'Unlock & Ganti Launcher' di bawah ini.",
+                9.4f,
+                UiKit.MUTED,
+                maxLines = 3
+            ).apply { setPadding(0, dp(context, 2), 0, dp(context, 6)) }
+        )
+
+        val lockBtnsScroll = android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
+        val lockBtns = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        lockBtns.addView(UiKit.chipButton(context, "Set Default & Lock", Color.argb(130, 16, 185, 129)) {
+            prefs.launcherLockEnabled = true
+            host.requestSetDefaultLauncher()
+        }, LinearLayout.LayoutParams(-2, dp(context, 25)).apply { rightMargin = dp(context, 5) })
+
+        lockBtns.addView(UiKit.chipButton(context, "Unlock & Ganti ke Bawaan", Color.argb(120, 185, 28, 28)) {
+            host.unlockAndSwitchDefaultLauncher()
+        }, LinearLayout.LayoutParams(-2, dp(context, 25)).apply { rightMargin = dp(context, 5) })
+
+        lockBtns.addView(UiKit.chipButton(
+            context,
+            if (prefs.launcherLockPin.isEmpty()) "Set PIN Kunci" else "Ubah/Hapus PIN"
+        ) {
+            host.overlays.showInputPrompt(
+                title = "PIN Buka Kunci Launcher (Kosongkan untuk tanpa PIN)",
+                initialText = prefs.launcherLockPin,
+                hintText = "Contoh: 1234",
+                confirmLabel = "Simpan PIN"
+            ) { pin ->
+                prefs.launcherLockPin = pin
+                host.showToast("Launcher Lock", if (pin.isEmpty()) "PIN dinonaktifkan" else "PIN kunci tersimpan")
+            }
+        }, LinearLayout.LayoutParams(-2, dp(context, 25)).apply { rightMargin = dp(context, 5) })
+
+        lockBtns.addView(UiKit.chipButton(context, "Onboarding Awal") {
+            host.showOnboardingWizard()
+        }, LinearLayout.LayoutParams(-2, dp(context, 25)))
+
+        lockBtnsScroll.addView(lockBtns)
+        lockCard.addView(lockBtnsScroll, LinearLayout.LayoutParams(-1, -2))
+        root.addView(lockCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 10) })
+
+        // 1. Live Micro-Density UI Scaling Slider (55% .. 135%)
         val scaleHeader = UiKit.label(
             context,
-            "Skala UI & Resolusi Desktop: ${prefs.uiScalePercent}% (Otomatis adaptif semua layar/DPI)",
-            12.5f,
+            "Ukuran & Kerapatan UI Desktop: ${prefs.uiScalePercent}% (Default Kecil PC: 84%)",
+            10.8f,
             UiKit.INK,
             bold = true
         )
@@ -545,63 +612,87 @@ object ToolsApps {
         val scaleSliderRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(context, 4), 0, dp(context, 10))
+            setPadding(0, dp(context, 2), 0, dp(context, 4))
         }
         var pendingPct = prefs.uiScalePercent
-        val slider = UiKit.buildFluentSlider(context, 75, 135, prefs.uiScalePercent, theme.accent) { pct ->
+        val slider = UiKit.buildFluentSlider(context, 55, 130, prefs.uiScalePercent, theme.accent) { pct ->
             pendingPct = pct
-            scaleHeader.text = "Skala UI & Resolusi Desktop: $pct%"
+            scaleHeader.text = "Ukuran & Kerapatan UI Desktop: $pct%"
         }
-        scaleSliderRow.addView(slider, LinearLayout.LayoutParams(0, dp(context, 30), 1f).apply { rightMargin = dp(context, 8) })
-        scaleSliderRow.addView(UiKit.chipButton(context, "Terapkan Skala", Color.argb(130, 37, 99, 235)) {
+        scaleSliderRow.addView(slider, LinearLayout.LayoutParams(0, dp(context, 26), 1f).apply { rightMargin = dp(context, 6) })
+        scaleSliderRow.addView(UiKit.chipButton(context, "Terapkan", Color.argb(140, 14, 165, 233)) {
             prefs.uiScalePercent = pendingPct
             VectorIcons.clearCache()
             host.refreshDesktopUI()
-            host.showToast("Display Scaling", "Skala desktop diatur ke ${prefs.uiScalePercent}%")
-        }, LinearLayout.LayoutParams(-2, dp(context, 30)))
+            host.showToast("UI Density", "Kerapatan UI diatur ke ${prefs.uiScalePercent}%")
+        }, LinearLayout.LayoutParams(-2, dp(context, 25)))
         root.addView(scaleSliderRow)
 
+        // Quick UI Scale Presets
+        val presetRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, dp(context, 8))
+        }
+        listOf("65% Ultra Kecil" to 65, "75% Micro PC" to 75, "84% Default" to 84, "100% Sedang" to 100).forEachIndexed { idx, (lbl, v) ->
+            presetRow.addView(UiKit.chipButton(context, lbl) {
+                prefs.uiScalePercent = v
+                VectorIcons.clearCache()
+                host.refreshDesktopUI()
+            }, LinearLayout.LayoutParams(0, dp(context, 23), 1f).apply { if (idx < 3) rightMargin = dp(context, 4) })
+        }
+        root.addView(presetRow)
+
+        // Taskbar Height Slider (26dp .. 44dp)
+        val tbHeader = UiKit.label(context, "Tinggi Taskbar: ${prefs.taskbarHeightDp}dp", 10.5f, UiKit.INK, bold = true)
+        root.addView(tbHeader)
+        val tbSlider = UiKit.buildFluentSlider(context, 26, 44, prefs.taskbarHeightDp, theme.accent) { h ->
+            prefs.taskbarHeightDp = h
+            tbHeader.text = "Tinggi Taskbar: ${h}dp"
+            host.refreshDesktopUI()
+        }
+        root.addView(tbSlider, LinearLayout.LayoutParams(-1, dp(context, 24)).apply { bottomMargin = dp(context, 8) })
+
         // 2. Theme & Wallpaper
-        root.addView(UiKit.label(context, "Tema Warna & Wallpaper Desktop", 12.5f, UiKit.INK, bold = true))
+        root.addView(UiKit.label(context, "Palet Graphite & Wallpaper", 10.8f, UiKit.INK, bold = true))
         val themeButtons = prefs.themes.mapIndexed { index, palette ->
             UiKit.chipButton(
                 context,
                 palette.name,
                 bgColor = palette.bgColors[1],
-                strokeColor = if (prefs.themeIndex == index && !prefs.useCustomWallpaper) palette.accent else Color.argb(60, 255, 255, 255)
+                strokeColor = if (prefs.themeIndex == index && !prefs.useCustomWallpaper) palette.accent else Color.argb(38, 255, 255, 255)
             ) {
                 prefs.themeIndex = index
                 prefs.clearCustomWallpaper()
                 host.refreshDesktopUI()
             }
         }
-        root.addView(UiKit.buildGrid(context, 3, 34, themeButtons), LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(context, 5); bottomMargin = dp(context, 6)
+        root.addView(UiKit.buildGrid(context, 3, 27, themeButtons), LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(context, 4); bottomMargin = dp(context, 6)
         })
 
         val wpRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        wpRow.addView(UiKit.chipButton(context, "Pilih Wallpaper Galeri", Color.argb(95, 37, 99, 235)) {
+        wpRow.addView(UiKit.chipButton(context, "Wallpaper Galeri") {
             host.pickCustomWallpaper()
-        }, LinearLayout.LayoutParams(0, dp(context, 32), 1f).apply { rightMargin = dp(context, 6) })
-        wpRow.addView(UiKit.chipButton(context, "HyperShield (Rust/C/C++)", Color.argb(95, 16, 185, 129)) {
+        }, LinearLayout.LayoutParams(0, dp(context, 26), 1f).apply { rightMargin = dp(context, 5) })
+        wpRow.addView(UiKit.chipButton(context, "HyperShield Core") {
             host.openNativeHub()
-        }, LinearLayout.LayoutParams(0, dp(context, 32), 1f).apply { rightMargin = dp(context, 6) })
-        wpRow.addView(UiKit.chipButton(context, "Shizuku & Termux", Color.argb(95, 99, 102, 241)) {
+        }, LinearLayout.LayoutParams(0, dp(context, 26), 1f).apply { rightMargin = dp(context, 5) })
+        wpRow.addView(UiKit.chipButton(context, "Floating & Shizuku") {
             host.openShizukuHub()
-        }, LinearLayout.LayoutParams(0, dp(context, 32), 1f))
-        root.addView(wpRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 12) })
+        }, LinearLayout.LayoutParams(0, dp(context, 26), 1f))
+        root.addView(wpRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 10) })
 
         // 3. Toggles
         fun toggleRow(title: String, sub: String, getVal: () -> Boolean, onFlip: () -> Unit): View {
             val box = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                background = UiKit.rounded(context, Color.argb(24, 255, 255, 255), 10)
-                setPadding(dp(context, 10), dp(context, 7), dp(context, 10), dp(context, 7))
+                background = UiKit.strokeRounded(context, Color.rgb(19, 23, 31), Color.argb(26, 255, 255, 255), 7)
+                setPadding(dp(context, 9), dp(context, 5), dp(context, 9), dp(context, 5))
             }
             val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            col.addView(UiKit.label(context, title, 12f, UiKit.INK, bold = true))
-            col.addView(UiKit.label(context, sub, 10f, UiKit.MUTED, maxLines = 2))
+            col.addView(UiKit.label(context, title, 10.4f, UiKit.INK, bold = true))
+            col.addView(UiKit.label(context, sub, 9.0f, UiKit.MUTED, maxLines = 2))
             box.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
 
             val btn = UiKit.chipButton(context, "") {}
@@ -610,44 +701,62 @@ object ToolsApps {
                 btn.text = if (on) "ON" else "OFF"
                 btn.background = UiKit.strokeRounded(
                     context,
-                    if (on) Color.argb(120, 34, 197, 94) else Color.argb(38, 255, 255, 255),
-                    Color.argb(90, 255, 255, 255),
-                    8
+                    if (on) Color.argb(120, 16, 185, 129) else Color.rgb(26, 30, 39),
+                    if (on) Color.argb(140, 52, 211, 153) else Color.argb(40, 255, 255, 255),
+                    6
                 )
             }
             sync()
             btn.setOnClickListener { onFlip(); sync() }
-            box.addView(btn, LinearLayout.LayoutParams(dp(context, 64), dp(context, 28)))
+            box.addView(btn, LinearLayout.LayoutParams(dp(context, 48), dp(context, 23)))
             return box
         }
+
+        root.addView(toggleRow(
+            "Kunci Launcher (Blokir Kembali ke Launcher Bawaan)",
+            "Otomatis mengunci di HyperDeX selama masih diset sebagai Default Home",
+            { prefs.launcherLockEnabled },
+            { prefs.launcherLockEnabled = !prefs.launcherLockEnabled; host.refreshDesktopUI() }
+        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 4) })
 
         root.addView(toggleRow(
             "Mode PC Landscape Otomatis",
             "Kunci tampilan mendatar penuh layaknya monitor PC",
             { prefs.landscapeLock },
             { prefs.landscapeLock = !prefs.landscapeLock; host.refreshDesktopUI() }
-        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 5) })
+        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 4) })
 
         root.addView(toggleRow(
             "Full Window Immersive (Tanpa Bar Android)",
             "Sembunyikan status bar & navigation bar bawaan Android sepenuhnya",
             { prefs.immersiveMode },
             { prefs.immersiveMode = !prefs.immersiveMode; host.refreshDesktopUI() }
-        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 5) })
+        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 4) })
 
         root.addView(toggleRow(
-            "Taskbar Rata Tengah (Gaya Windows 11)",
-            "Posisikan tombol Start & ikon aplikasi di tengah taskbar",
+            "Taskbar Menempel Penuh (Flush Edge PC)",
+            "Matikan untuk memakai gaya Floating Dock melayang",
+            { prefs.flushTaskbar },
+            { prefs.flushTaskbar = !prefs.flushTaskbar; host.refreshDesktopUI() }
+        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 4) })
+
+        root.addView(toggleRow(
+            "Taskbar Rata Tengah & Tab Hanya Ikon",
+            "Rapatkan ikon aplikasi ke tengah taskbar seperti Windows 11",
             { prefs.centerTaskbar },
-            { prefs.centerTaskbar = !prefs.centerTaskbar; host.refreshDesktopUI() }
-        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 5) })
+            {
+                prefs.centerTaskbar = !prefs.centerTaskbar
+                prefs.compactTaskbarIconsOnly = prefs.centerTaskbar
+                host.refreshDesktopUI()
+            }
+        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 4) })
 
         root.addView(toggleRow(
             "Live GPU Aurora Shader Wallpaper (OpenGL ES 3.0 C++)",
-            "Render animasi shader plasma real-time di GPU lewat libhyper_gfx_cc.so",
+            "Render animasi shader di GPU lewat libhyper_gfx_cc.so",
             { prefs.liveShaderWallpaper },
             { prefs.liveShaderWallpaper = !prefs.liveShaderWallpaper; host.refreshDesktopUI() }
-        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 5) })
+        ), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 4) })
 
         root.addView(toggleRow(
             "Efek Acrylic Frosted Wallpaper (C++20 Native)",
@@ -660,13 +769,13 @@ object ToolsApps {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        iconScaleRow.addView(UiKit.label(context, "Ukuran Ikon Desktop:", 11.5f, UiKit.INK, bold = true),
+        iconScaleRow.addView(UiKit.label(context, "Ukuran Ikon:", 10.4f, UiKit.INK, bold = true),
             LinearLayout.LayoutParams(0, -2, 1f))
-        listOf("Kecil" to 0, "Normal" to 1, "Besar" to 2).forEach { (lbl, sc) ->
+        listOf("Micro" to 0, "Kecil" to 1, "Sedang" to 2, "Besar" to 3).forEach { (lbl, sc) ->
             iconScaleRow.addView(UiKit.chipButton(context, lbl) {
                 prefs.iconScale = sc
                 host.refreshDesktopUI()
-            }, LinearLayout.LayoutParams(-2, dp(context, 28)).apply { leftMargin = dp(context, 5) })
+            }, LinearLayout.LayoutParams(-2, dp(context, 24)).apply { leftMargin = dp(context, 4) })
         }
         root.addView(iconScaleRow)
 

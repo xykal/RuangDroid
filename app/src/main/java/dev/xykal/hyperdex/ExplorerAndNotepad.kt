@@ -42,6 +42,10 @@ interface DesktopHostCallbacks {
     fun pickCustomWallpaper()
     fun pickAudioFromStorage()
     fun refreshDesktopUI()
+    fun isDefaultHomeActive(): Boolean
+    fun requestSetDefaultLauncher()
+    fun unlockAndSwitchDefaultLauncher()
+    fun showOnboardingWizard()
 }
 
 object ExplorerAndNotepad {

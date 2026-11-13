@@ -24,7 +24,7 @@ object VectorIcons {
     }
 
     fun get(context: Context, id: String, sizePx: Int, accentColor: Int = 0): Drawable {
-        val s = sizePx.coerceIn(24, 256)
+        val s = sizePx.coerceIn(14, 512)
         val key = "$id@$s@$accentColor"
         var bmp = cache.get(key)
         if (bmp == null || bmp.isRecycled) {
@@ -35,29 +35,25 @@ object VectorIcons {
     }
 
     private fun baseSquircle(canvas: Canvas, s: Float, c1: Int, c2: Int) {
-        val pad = s * 0.06f
-        val r = s * 0.24f
+        val pad = s * 0.07f
+        val r = s * 0.21f
         val rect = RectF(pad, pad, s - pad, s - pad)
+        // Clean matte graphite tile with subtle accent tint (zero cheap plastic gloss)
+        val dark1 = Color.rgb(
+            (22 + Color.red(c1) * 0.14f).toInt().coerceAtMost(60),
+            (25 + Color.green(c1) * 0.14f).toInt().coerceAtMost(64),
+            (33 + Color.blue(c1) * 0.14f).toInt().coerceAtMost(74)
+        )
+        val dark2 = Color.rgb(14, 17, 23)
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(0f, 0f, s, s, c1, c2, Shader.TileMode.CLAMP)
+            shader = LinearGradient(0f, 0f, s, s, dark1, dark2, Shader.TileMode.CLAMP)
         }
         canvas.drawRoundRect(rect, r, r, bg)
 
-        // Subtle top specular highlight
-        val gloss = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(
-                0f, pad, 0f, s * 0.52f,
-                Color.argb(65, 255, 255, 255),
-                Color.argb(0, 255, 255, 255),
-                Shader.TileMode.CLAMP
-            )
-        }
-        canvas.drawRoundRect(rect, r, r, gloss)
-
         val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = (s * 0.025f).coerceAtLeast(1.2f)
-            color = Color.argb(85, 255, 255, 255)
+            strokeWidth = (s * 0.022f).coerceAtLeast(1.0f)
+            color = Color.argb(42, 255, 255, 255)
         }
         canvas.drawRoundRect(rect, r, r, rim)
     }
@@ -69,29 +65,92 @@ object VectorIcons {
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
 
         when (id) {
-            "start_orb" -> {
-                val gap = s * 0.06f
-                val pad = s * 0.14f
-                val box = (s - pad * 2 - gap) / 2f
-                val rad = box * 0.22f
-                val colors = intArrayOf(
-                    Color.rgb(96, 165, 250),
-                    Color.rgb(59, 130, 246),
-                    Color.rgb(56, 189, 248),
-                    Color.rgb(37, 99, 235)
-                )
-                val coords = arrayOf(
-                    RectF(pad, pad, pad + box, pad + box),
-                    RectF(pad + box + gap, pad, pad + box * 2 + gap, pad + box),
-                    RectF(pad, pad + box + gap, pad + box, pad + box * 2 + gap),
-                    RectF(pad + box + gap, pad + box + gap, pad + box * 2 + gap, pad + box * 2 + gap)
-                )
-                for (i in 0..3) {
-                    p.shader = null
-                    p.style = Paint.Style.FILL
-                    p.color = colors[i]
-                    c.drawRoundRect(coords[i], rad, rad, p)
+            "start_orb", "brand_logo" -> {
+                // HyperDeX Isometric Titanium 'HX' Blade Monogram
+                val hex = Path().apply {
+                    moveTo(s * 0.50f, s * 0.08f)
+                    lineTo(s * 0.87f, s * 0.29f)
+                    lineTo(s * 0.87f, s * 0.71f)
+                    lineTo(s * 0.50f, s * 0.92f)
+                    lineTo(s * 0.13f, s * 0.71f)
+                    lineTo(s * 0.13f, s * 0.29f)
+                    close()
                 }
+                p.style = Paint.Style.FILL
+                p.shader = LinearGradient(0f, 0f, s, s, Color.rgb(20, 25, 35), Color.rgb(11, 14, 20), Shader.TileMode.CLAMP)
+                c.drawPath(hex, p)
+                p.shader = null
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = (s * 0.032f).coerceAtLeast(1.1f)
+                p.color = if (accent != 0) Color.argb(140, Color.red(accent), Color.green(accent), Color.blue(accent)) else Color.argb(120, 148, 163, 184)
+                c.drawPath(hex, p)
+
+                // Left Titanium H Pillar
+                p.style = Paint.Style.FILL
+                p.color = Color.rgb(248, 250, 252)
+                c.drawRect(s * 0.27f, s * 0.28f, s * 0.37f, s * 0.72f, p)
+
+                // Forward Cyan-Tungsten X Blade
+                val blade1 = Path().apply {
+                    moveTo(s * 0.40f, s * 0.28f)
+                    lineTo(s * 0.51f, s * 0.28f)
+                    lineTo(s * 0.74f, s * 0.72f)
+                    lineTo(s * 0.63f, s * 0.72f)
+                    close()
+                }
+                p.shader = LinearGradient(
+                    s * 0.40f, s * 0.28f, s * 0.74f, s * 0.72f,
+                    if (accent != 0) accent else Color.rgb(56, 189, 248),
+                    Color.rgb(99, 102, 241),
+                    Shader.TileMode.CLAMP
+                )
+                c.drawPath(blade1, p)
+                p.shader = null
+
+                // Counter Titanium X Blade
+                val blade2 = Path().apply {
+                    moveTo(s * 0.63f, s * 0.28f)
+                    lineTo(s * 0.74f, s * 0.28f)
+                    lineTo(s * 0.51f, s * 0.72f)
+                    lineTo(s * 0.40f, s * 0.72f)
+                    close()
+                }
+                p.color = Color.rgb(226, 232, 240)
+                c.drawPath(blade2, p)
+
+                // Crossbar Bridge
+                p.color = Color.rgb(248, 250, 252)
+                c.drawRect(s * 0.34f, s * 0.46f, s * 0.56f, s * 0.54f, p)
+            }
+
+            "win_opacity" -> {
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = (s * 0.08f).coerceAtLeast(1.3f)
+                p.color = Color.rgb(203, 213, 225)
+                c.drawCircle(s * 0.50f, s * 0.50f, s * 0.27f, p)
+                p.style = Paint.Style.FILL
+                c.drawArc(RectF(s * 0.23f, s * 0.23f, s * 0.77f, s * 0.77f), 90f, 180f, true, p)
+            }
+
+            "win_popout" -> {
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = (s * 0.08f).coerceAtLeast(1.3f)
+                p.strokeCap = Paint.Cap.ROUND
+                p.color = Color.rgb(203, 213, 225)
+                c.drawRoundRect(RectF(s * 0.20f, s * 0.32f, s * 0.68f, s * 0.80f), s * 0.06f, s * 0.06f, p)
+                c.drawLine(s * 0.48f, s * 0.52f, s * 0.80f, s * 0.20f, p)
+                c.drawLine(s * 0.60f, s * 0.20f, s * 0.80f, s * 0.20f, p)
+                c.drawLine(s * 0.80f, s * 0.20f, s * 0.80f, s * 0.40f, p)
+            }
+
+            "lock_home" -> {
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = (s * 0.08f).coerceAtLeast(1.4f)
+                p.color = if (accent != 0) accent else Color.rgb(52, 211, 153)
+                c.drawArc(RectF(s * 0.33f, s * 0.18f, s * 0.67f, s * 0.52f), 180f, 180f, false, p)
+                c.drawRoundRect(RectF(s * 0.25f, s * 0.44f, s * 0.75f, s * 0.82f), s * 0.08f, s * 0.08f, p)
+                p.style = Paint.Style.FILL
+                c.drawCircle(s * 0.50f, s * 0.63f, s * 0.06f, p)
             }
 
             "search" -> {

@@ -147,27 +147,27 @@ class FloatingWindowManager(
             orientation = LinearLayout.VERTICAL
             isClickable = true
             isFocusable = true
-            elevation = dp(14).toFloat()
-            background = UiKit.strokeRounded(context, Color.rgb(15, 23, 38), theme.accent, 13, 1)
+            elevation = dp(16).toFloat()
+            background = UiKit.strokeRounded(context, Color.rgb(17, 20, 27), Color.argb(42, 255, 255, 255), 8, 1)
         }
 
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(4), dp(6), dp(4))
-            background = UiKit.rounded(context, theme.windowHeaderActive, 12)
+            setPadding(dp(8), dp(2), dp(4), dp(2))
+            background = UiKit.rounded(context, theme.windowHeaderActive, 8)
         }
 
         val appIcon = ImageView(context).apply {
-            setImageDrawable(VectorIcons.get(context, iconId, dp(20), theme.accent))
+            setImageDrawable(VectorIcons.get(context, iconId, dp(15), theme.accent))
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
-        header.addView(appIcon, LinearLayout.LayoutParams(dp(20), dp(20)).apply { rightMargin = dp(8) })
+        header.addView(appIcon, LinearLayout.LayoutParams(dp(15), dp(15)).apply { rightMargin = dp(6) })
 
-        val titleTv = UiKit.label(context, title, 12f, UiKit.INK, bold = true).apply {
+        val titleTv = UiKit.label(context, title, 10.2f, UiKit.INK, bold = true).apply {
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(titleTv, LinearLayout.LayoutParams(0, dp(26), 1f))
+        header.addView(titleTv, LinearLayout.LayoutParams(0, dp(22), 1f))
 
         val maxImg = ImageView(context)
         val id = UUID.randomUUID().toString()
@@ -192,7 +192,7 @@ class FloatingWindowManager(
 
         fun syncMaxIcon() {
             maxImg.setImageDrawable(
-                VectorIcons.get(context, if (state.maximized) "win_restore" else "win_max", dp(18))
+                VectorIcons.get(context, if (state.maximized) "win_restore" else "win_max", dp(14))
             )
         }
         syncMaxIcon()
@@ -200,11 +200,11 @@ class FloatingWindowManager(
         fun chromeBtn(vecId: String, bg: Int, customImg: ImageView? = null, onClick: () -> Unit): LinearLayout {
             return LinearLayout(context).apply {
                 gravity = Gravity.CENTER
-                background = UiKit.rounded(context, bg, 7)
+                background = UiKit.rounded(context, bg, 5)
                 val iv = customImg ?: ImageView(context).apply {
-                    setImageDrawable(VectorIcons.get(context, vecId, dp(18)))
+                    setImageDrawable(VectorIcons.get(context, vecId, dp(13)))
                 }
-                addView(iv, LinearLayout.LayoutParams(dp(16), dp(16)))
+                addView(iv, LinearLayout.LayoutParams(dp(13), dp(13)))
                 UiKit.attachPressBounce(this, 0.90f)
                 setOnClickListener {
                     focusWindow(state.id)
@@ -213,28 +213,56 @@ class FloatingWindowManager(
             }
         }
 
-        if (!isNarrow) {
-            header.addView(chromeBtn("win_snap_l", Color.argb(30, 255, 255, 255)) {
-                snapWindow(state, leftHalf = true)
-            }, LinearLayout.LayoutParams(dp(26), dp(24)).apply { rightMargin = dp(3) })
+        // Custom Window Opacity Cycle (100% -> 82% -> 64%)
+        var alphaIdx = 0
+        val alphaLevels = floatArrayOf(1.0f, 0.84f, 0.66f)
+        header.addView(chromeBtn("win_opacity", Color.argb(14, 255, 255, 255)) {
+            alphaIdx = (alphaIdx + 1) % alphaLevels.size
+            winFrame.alpha = alphaLevels[alphaIdx]
+        }, LinearLayout.LayoutParams(dp(22), dp(20)).apply { rightMargin = dp(2) })
 
-            header.addView(chromeBtn("win_snap_r", Color.argb(30, 255, 255, 255)) {
+        if (!isNarrow) {
+            header.addView(chromeBtn("win_snap_l", Color.argb(14, 255, 255, 255)) {
+                snapWindow(state, leftHalf = true)
+            }, LinearLayout.LayoutParams(dp(22), dp(20)).apply { rightMargin = dp(2) })
+
+            header.addView(chromeBtn("win_snap_r", Color.argb(14, 255, 255, 255)) {
                 snapWindow(state, leftHalf = false)
-            }, LinearLayout.LayoutParams(dp(26), dp(24)).apply { rightMargin = dp(5) })
+            }, LinearLayout.LayoutParams(dp(22), dp(20)).apply { rightMargin = dp(3) })
         }
 
-        header.addView(chromeBtn("win_min", Color.argb(36, 255, 255, 255)) {
-            minimizeWindow(state.id)
-        }, LinearLayout.LayoutParams(dp(28), dp(24)).apply { rightMargin = dp(4) })
+        // Pop-Out into True OS-Wide Custom Floating Window (Zero Stock Android Freeform Chrome!)
+        lateinit var bodyContainerRef: FrameLayout
+        header.addView(chromeBtn("win_popout", Color.argb(24, 56, 189, 248)) {
+            if (!SystemFloatingOverlay.canDraw(context)) {
+                SystemFloatingOverlay.requestOverlayPermission(context)
+            } else if (bodyContainerRef.childCount > 0) {
+                val detachedChild = bodyContainerRef.getChildAt(0)
+                bodyContainerRef.removeViewAt(0)
+                state.onCloseCleanup = null
+                closeWindow(state.id)
+                SystemFloatingOverlay.spawnCustomOverlayWindow(
+                    context = context,
+                    prefs = prefs,
+                    title = title,
+                    iconId = iconId,
+                    contentView = detachedChild
+                )
+            }
+        }, LinearLayout.LayoutParams(dp(22), dp(20)).apply { rightMargin = dp(3) })
 
-        header.addView(chromeBtn("win_max", Color.argb(36, 255, 255, 255), customImg = maxImg) {
+        header.addView(chromeBtn("win_min", Color.argb(18, 255, 255, 255)) {
+            minimizeWindow(state.id)
+        }, LinearLayout.LayoutParams(dp(23), dp(20)).apply { rightMargin = dp(2) })
+
+        header.addView(chromeBtn("win_max", Color.argb(18, 255, 255, 255), customImg = maxImg) {
             toggleMaximize(state)
             syncMaxIcon()
-        }, LinearLayout.LayoutParams(dp(28), dp(24)).apply { rightMargin = dp(4) })
+        }, LinearLayout.LayoutParams(dp(23), dp(20)).apply { rightMargin = dp(2) })
 
-        header.addView(chromeBtn("win_close", Color.argb(185, 220, 38, 38)) {
+        header.addView(chromeBtn("win_close", Color.argb(150, 185, 28, 28)) {
             closeWindow(state.id)
-        }, LinearLayout.LayoutParams(dp(30), dp(24)))
+        }, LinearLayout.LayoutParams(dp(25), dp(20)))
 
         // Smooth Drag + Edge Aero Snap Preview + Double-Tap Maximize
         var dragStartX = 0f
@@ -318,12 +346,13 @@ class FloatingWindowManager(
             }
         }
 
-        winFrame.addView(header, LinearLayout.LayoutParams(-1, if (isShort) dp(32) else dp(36)))
+        winFrame.addView(header, LinearLayout.LayoutParams(-1, if (isShort) dp(25) else dp(27)))
 
         val bodyContainer = FrameLayout(context).apply {
-            setBackgroundColor(Color.rgb(13, 20, 34))
+            setBackgroundColor(Color.rgb(15, 18, 24))
             setOnClickListener { focusWindow(state.id) }
         }
+        bodyContainerRef = bodyContainer
 
         val contentView = try {
             contentBuilder(state)
@@ -563,13 +592,13 @@ class FloatingWindowManager(
             w.headerBar.background = UiKit.rounded(
                 context,
                 if (isActive) theme.windowHeaderActive else theme.windowHeaderInactive,
-                12
+                8
             )
             w.frame.background = UiKit.strokeRounded(
                 context,
-                Color.rgb(15, 23, 38),
-                if (isActive) theme.accent else Color.argb(65, 255, 255, 255),
-                13,
+                Color.rgb(17, 20, 27),
+                if (isActive) Color.argb(68, 255, 255, 255) else Color.argb(28, 255, 255, 255),
+                8,
                 1
             )
         }

@@ -13,6 +13,10 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
         <package android:name="moe.shizuku.privileged.api" />
         <package android:name="com.termux" />
         <package android:name="com.termux.x11" />
@@ -23,7 +27,8 @@
         android:name=".HyperDexApp"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="HyperDeX"
         android:largeHeap="true"
         android:supportsRtl="true"

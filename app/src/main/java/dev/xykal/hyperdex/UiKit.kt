@@ -22,26 +22,25 @@ import android.widget.TextView
 import kotlin.math.min
 
 object UiKit {
-    const val INK = 0xFFF4F7FF.toInt()
-    const val MUTED = 0xFFA5B4CE.toInt()
+    const val INK = 0xFFEDF2F7.toInt()
+    const val MUTED = 0xFF8B98AD.toInt()
 
     val fluentInterpolator = DecelerateInterpolator(1.8f)
-    val springInterpolator = OvershootInterpolator(0.9f)
+    val springInterpolator = OvershootInterpolator(0.75f)
 
     /**
-     * Universal Multi-Screen & Multi-DPI Adaptive Unit:
-     * Guarantees every phone/tablet/monitor gets at least a ~395-unit virtual short-edge at 100% scale
-     * (so small 320dp/360dp phones or "Largest Display Size" settings NEVER look oversized / "kegedean"),
-     * while honoring low-DPI screens (0.60f floor) and the user's UI Scale slider (75%..135%).
+     * Micro-Density PC Unit (v6.0):
+     * Targets a 465-unit short-edge reference + default 84% scale (~550 virtual px short edge),
+     * so out-of-the-box UI is genuinely crisp, compact, and PC-sized on EVERY screen without bloating,
+     * while remaining 100% adjustable from 55% (Ultra-Micro) to 135% (Comfort) in Display Settings.
      */
     fun unit(context: Context): Float {
         val dm = context.resources.displayMetrics
         val shortEdgePx = min(dm.widthPixels, dm.heightPixels).toFloat().coerceAtLeast(240f)
-        val viewportUnit = shortEdgePx / 398f
-        val blended = (dm.density * 0.42f) + (viewportUnit * 0.58f)
-        // Cap base unit to viewportUnit on compact phones so elements never exceed screen proportions
-        val adaptiveBase = if (shortEdgePx / dm.density < 385f) min(blended, viewportUnit) else blended
-        return (adaptiveBase * DesktopPrefs.cachedScaleFactor).coerceIn(0.60f, 5.0f)
+        val viewportUnit = shortEdgePx / 465f
+        val blended = (dm.density * 0.32f) + (viewportUnit * 0.68f)
+        val adaptiveBase = min(blended, shortEdgePx / 445f)
+        return (adaptiveBase * DesktopPrefs.cachedScaleFactor).coerceIn(0.45f, 4.5f)
     }
 
     fun dp(context: Context, value: Int): Int =
@@ -114,24 +113,24 @@ object UiKit {
     fun chipButton(
         context: Context,
         text: String,
-        bgColor: Int = Color.argb(46, 215, 229, 255),
-        strokeColor: Int = Color.argb(65, 255, 255, 255),
+        bgColor: Int = Color.rgb(28, 33, 43),
+        strokeColor: Int = Color.argb(36, 255, 255, 255),
         textColor: Int = INK,
         onClick: () -> Unit
     ): TextView = TextView(context).apply {
         this.text = text
-        setTextSize(TypedValue.COMPLEX_UNIT_PX, spPx(context, 11.2f))
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, spPx(context, 10.0f))
         setTextColor(textColor)
-        typeface = Typeface.DEFAULT_BOLD
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         gravity = Gravity.CENTER
-        setPadding(dp(context, 10), dp(context, 4), dp(context, 10), dp(context, 4))
-        background = strokeRounded(context, bgColor, strokeColor, 9)
-        attachPressBounce(this, 0.95f)
+        setPadding(dp(context, 8), dp(context, 3), dp(context, 8), dp(context, 3))
+        background = strokeRounded(context, bgColor, strokeColor, 6)
+        attachPressBounce(this, 0.96f)
         setOnClickListener { onClick() }
     }
 
     /**
-     * Custom Fluent Slider (100% custom PC look — zero Android SeekBar!).
+     * Custom Precision PC Slider (100% custom — zero Android SeekBar).
      */
     @SuppressLint("ClickableViewAccessibility")
     fun buildFluentSlider(
@@ -151,26 +150,23 @@ object UiKit {
             override fun onDraw(canvas: Canvas) {
                 val w = width.toFloat()
                 val h = height.toFloat()
-                val pad = dp(context, 10).toFloat()
+                val pad = dp(context, 8).toFloat()
                 val trackW = (w - pad * 2).coerceAtLeast(10f)
                 val cy = h / 2f
-                val trackH = dp(context, 5).toFloat()
+                val trackH = dp(context, 3).toFloat().coerceAtLeast(2f)
                 val frac = (current - minVal).toFloat() / range.toFloat()
                 val thumbX = pad + trackW * frac
 
-                // Background rail
-                paint.color = Color.argb(65, 255, 255, 255)
+                paint.color = Color.argb(45, 255, 255, 255)
                 canvas.drawRoundRect(RectF(pad, cy - trackH / 2, w - pad, cy + trackH / 2), trackH, trackH, paint)
 
-                // Active fill rail
                 paint.color = accentColor
                 canvas.drawRoundRect(RectF(pad, cy - trackH / 2, thumbX, cy + trackH / 2), trackH, trackH, paint)
 
-                // Outer thumb ring
-                paint.color = Color.WHITE
-                canvas.drawCircle(thumbX, cy, dp(context, 8).toFloat(), paint)
+                paint.color = Color.rgb(241, 245, 249)
+                canvas.drawCircle(thumbX, cy, dp(context, 6).toFloat(), paint)
                 paint.color = accentColor
-                canvas.drawCircle(thumbX, cy, dp(context, 4).toFloat(), paint)
+                canvas.drawCircle(thumbX, cy, dp(context, 2).toFloat().coerceAtLeast(1.5f), paint)
             }
 
             override fun onTouchEvent(event: MotionEvent): Boolean {

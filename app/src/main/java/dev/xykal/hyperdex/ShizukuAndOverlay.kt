@@ -323,6 +323,276 @@ object SystemFloatingOverlay {
         }
     }
 
+    private val overlayWindows = mutableListOf<View>()
+    private var activeAppTopBar: View? = null
+
+    fun cloudWebAppUrlForPackage(pkg: String, label: String): String {
+        val p = pkg.lowercase()
+        return when {
+            "whatsapp" in p -> "https://web.whatsapp.com"
+            "youtube" in p -> "https://m.youtube.com"
+            "telegram" in p -> "https://web.telegram.org/k/"
+            "discord" in p -> "https://discord.com/app"
+            "instagram" in p -> "https://www.instagram.com"
+            "twitter" in p || "com.x." in p -> "https://x.com"
+            "spotify" in p -> "https://open.spotify.com"
+            "chatgpt" in p || "openai" in p -> "https://chatgpt.com"
+            "tiktok" in p || "musically" in p || "trill" in p -> "https://www.tiktok.com"
+            "facebook" in p -> "https://m.facebook.com"
+            "github" in p -> "https://github.com"
+            "gmail" in p || "google.android.gm" in p -> "https://mail.google.com"
+            "maps" in p -> "https://maps.google.com"
+            "chrome" in p || "browser" in p || "firefox" in p -> "https://www.google.com"
+            else -> "https://www.google.com/search?q=${Uri.encode(label)}"
+        }
+    }
+
+    /**
+     * Spawns a 100% Custom HyperDeX OS-Wide Floating Window (TYPE_APPLICATION_OVERLAY)
+     * with custom slim Graphite chrome, drag, diagonal resize grip, opacity toggle, and pill-minimize.
+     * Zero stock Android freeform decoration!
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    fun spawnCustomOverlayWindow(
+        context: Context,
+        prefs: DesktopPrefs,
+        title: String,
+        iconId: String,
+        contentView: View
+    ) {
+        val appCtx = context.applicationContext
+        if (!canDraw(appCtx)) {
+            requestOverlayPermission(appCtx)
+            return
+        }
+        val windowManager = appCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        fun dp(v: Int) = UiKit.dp(appCtx, v)
+        val dm = appCtx.resources.displayMetrics
+        val theme = prefs.currentTheme
+
+        val initW = kotlin.math.min(dp(360), (dm.widthPixels * 0.84f).toInt()).coerceAtLeast(dp(200))
+        val initH = kotlin.math.min(dp(250), (dm.heightPixels * 0.72f).toInt()).coerceAtLeast(dp(150))
+
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+
+        val lp = WindowManager.LayoutParams(
+            initW,
+            initH,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = ((dm.widthPixels - initW) / 2).coerceAtLeast(dp(8))
+            y = ((dm.heightPixels - initH) / 3).coerceAtLeast(dp(12))
+        }
+
+        var minimized = false
+        var savedW = initW
+        var savedH = initH
+        var alphaIdx = 0
+        val alphas = floatArrayOf(1.0f, 0.82f, 0.64f)
+
+        val frame = LinearLayout(appCtx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UiKit.strokeRounded(appCtx, Color.rgb(16, 19, 26), Color.argb(72, 255, 255, 255), 8, 1)
+            elevation = dp(18).toFloat()
+        }
+
+        val header = LinearLayout(appCtx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(7), dp(2), dp(4), dp(2))
+            background = UiKit.rounded(appCtx, theme.windowHeaderActive, 8)
+        }
+        header.addView(ImageView(appCtx).apply {
+            setImageDrawable(VectorIcons.get(appCtx, iconId, dp(14), theme.accent))
+        }, LinearLayout.LayoutParams(dp(14), dp(14)).apply { rightMargin = dp(5) })
+
+        val titleTv = UiKit.label(appCtx, title, 9.8f, UiKit.INK, bold = true)
+        header.addView(titleTv, LinearLayout.LayoutParams(0, dp(22), 1f))
+
+        val bodyWrap = android.widget.FrameLayout(appCtx).apply {
+            setBackgroundColor(Color.rgb(14, 17, 23))
+            addView(contentView, android.widget.FrameLayout.LayoutParams(-1, -1))
+        }
+
+        // Resize grip
+        val grip = View(appCtx).apply {
+            background = UiKit.rounded(appCtx, Color.argb(80, 148, 163, 184), 4)
+        }
+        var rx0 = 0f; var ry0 = 0f; var rw0 = 0; var rh0 = 0
+        grip.setOnTouchListener { _, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    rx0 = ev.rawX; ry0 = ev.rawY; rw0 = lp.width; rh0 = lp.height; true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    lp.width = (rw0 + (ev.rawX - rx0).toInt()).coerceIn(dp(180), dm.widthPixels - dp(8))
+                    lp.height = (rh0 + (ev.rawY - ry0).toInt()).coerceIn(dp(130), dm.heightPixels - dp(16))
+                    savedW = lp.width; savedH = lp.height
+                    try { windowManager.updateViewLayout(frame, lp) } catch (_: Throwable) {}
+                    true
+                }
+                else -> true
+            }
+        }
+        bodyWrap.addView(grip, android.widget.FrameLayout.LayoutParams(dp(14), dp(14), Gravity.BOTTOM or Gravity.END).apply {
+            rightMargin = dp(2); bottomMargin = dp(2)
+        })
+
+        fun hBtn(txt: String, bg: Int, onClick: () -> Unit) = UiKit.label(appCtx, txt, 9.5f, Color.WHITE, bold = true).apply {
+            gravity = Gravity.CENTER
+            background = UiKit.rounded(appCtx, bg, 4)
+            setOnClickListener { onClick() }
+        }
+
+        header.addView(hBtn("◐", Color.argb(20, 255, 255, 255)) {
+            alphaIdx = (alphaIdx + 1) % alphas.size
+            frame.alpha = alphas[alphaIdx]
+        }, LinearLayout.LayoutParams(dp(20), dp(19)).apply { rightMargin = dp(2) })
+
+        header.addView(hBtn("—", Color.argb(20, 255, 255, 255)) {
+            minimized = !minimized
+            if (minimized) {
+                bodyWrap.visibility = View.GONE
+                lp.width = dp(155)
+                lp.height = dp(26)
+                lp.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            } else {
+                bodyWrap.visibility = View.VISIBLE
+                lp.width = savedW
+                lp.height = savedH
+                lp.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            }
+            try { windowManager.updateViewLayout(frame, lp) } catch (_: Throwable) {}
+        }, LinearLayout.LayoutParams(dp(20), dp(19)).apply { rightMargin = dp(2) })
+
+        header.addView(hBtn("×", Color.argb(165, 185, 28, 28)) {
+            overlayWindows.remove(frame)
+            try { windowManager.removeView(frame) } catch (_: Throwable) {}
+        }, LinearLayout.LayoutParams(dp(21), dp(19)))
+
+        var dx0 = 0f; var dy0 = 0f; var ox0 = 0; var oy0 = 0
+        header.setOnTouchListener { _, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    dx0 = ev.rawX; dy0 = ev.rawY; ox0 = lp.x; oy0 = lp.y
+                    if (!minimized && (lp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
+                        lp.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        try { windowManager.updateViewLayout(frame, lp) } catch (_: Throwable) {}
+                    }
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    lp.x = (ox0 + (ev.rawX - dx0).toInt()).coerceIn(-lp.width / 2, dm.widthPixels - dp(48))
+                    lp.y = (oy0 + (ev.rawY - dy0).toInt()).coerceIn(0, dm.heightPixels - dp(28))
+                    try { windowManager.updateViewLayout(frame, lp) } catch (_: Throwable) {}
+                    true
+                }
+                else -> false
+            }
+        }
+
+        frame.addView(header, LinearLayout.LayoutParams(-1, dp(26)))
+        frame.addView(bodyWrap, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        try {
+            windowManager.addView(frame, lp)
+            overlayWindows.add(frame)
+        } catch (_: Throwable) {}
+    }
+
+    /**
+     * Attaches a sleek Custom HyperDeX Floating Top Window Bar over native external Android apps
+     * so users can snap/return/close external apps with HyperDeX chrome instead of stock Android bars.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    fun attachCustomAppTopBar(context: Context, prefs: DesktopPrefs, pkg: String, activity: String, label: String) {
+        val appCtx = context.applicationContext
+        if (!canDraw(appCtx)) return
+        val windowManager = appCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        activeAppTopBar?.let { try { windowManager.removeView(it) } catch (_: Throwable) {} }
+        activeAppTopBar = null
+
+        fun dp(v: Int) = UiKit.dp(appCtx, v)
+        val dm = appCtx.resources.displayMetrics
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            dp(26),
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = dp(4)
+        }
+
+        val bar = LinearLayout(appCtx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(2), dp(5), dp(2))
+            background = UiKit.strokeRounded(appCtx, Color.argb(236, 15, 18, 25), Color.argb(65, 255, 255, 255), 13, 1)
+            elevation = dp(14).toFloat()
+        }
+
+        bar.addView(ImageView(appCtx).apply {
+            setImageDrawable(VectorIcons.get(appCtx, "start_orb", dp(13), prefs.currentTheme.accent))
+        }, LinearLayout.LayoutParams(dp(13), dp(13)).apply { rightMargin = dp(5) })
+
+        val shortLbl = if (label.length > 14) label.take(13) + "…" else label
+        bar.addView(UiKit.label(appCtx, shortLbl, 9.5f, UiKit.INK, bold = true),
+            LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
+
+        fun pill(txt: String, bg: Int = Color.argb(28, 255, 255, 255), act: () -> Unit) =
+            UiKit.label(appCtx, txt, 9.0f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(6), dp(2), dp(6), dp(2))
+                background = UiKit.rounded(appCtx, bg, 6)
+                setOnClickListener { act() }
+            }
+
+        bar.addView(pill("Desktop") {
+            try { windowManager.removeView(bar) } catch (_: Throwable) {}
+            activeAppTopBar = null
+            appCtx.startActivity(Intent(appCtx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }, LinearLayout.LayoutParams(-2, dp(19)).apply { rightMargin = dp(4) })
+
+        bar.addView(pill("×", Color.argb(165, 185, 28, 28)) {
+            if (ShizukuBridge.hasPermission()) {
+                ShizukuBridge.runPrivilegedAsync("am force-stop '$pkg'") { _, _ -> }
+            }
+            try { windowManager.removeView(bar) } catch (_: Throwable) {}
+            activeAppTopBar = null
+            appCtx.startActivity(Intent(appCtx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }, LinearLayout.LayoutParams(-2, dp(19)))
+
+        var dx0 = 0f; var dy0 = 0f; var ox0 = 0; var oy0 = 0
+        bar.setOnTouchListener { _, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { dx0 = ev.rawX; dy0 = ev.rawY; ox0 = lp.x; oy0 = lp.y; true }
+                MotionEvent.ACTION_MOVE -> {
+                    lp.x = ox0 + (ev.rawX - dx0).toInt()
+                    lp.y = (oy0 + (ev.rawY - dy0).toInt()).coerceIn(0, dm.heightPixels - dp(30))
+                    try { windowManager.updateViewLayout(bar, lp) } catch (_: Throwable) {}
+                    true
+                }
+                else -> false
+            }
+        }
+
+        try {
+            windowManager.addView(bar, lp)
+            activeAppTopBar = bar
+        } catch (_: Throwable) {}
+    }
+
     // ==================== SHIZUKU & TERMUX HUB WINDOW UI ====================
     fun buildShizukuTermuxHubView(
         context: Context,

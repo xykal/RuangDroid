@@ -95,48 +95,48 @@ class OverlayKit(
         val theme = prefs.currentTheme
         val hostW = hostLayer.width.takeIf { it > 0 } ?: context.resources.displayMetrics.widthPixels
         val hostH = hostLayer.height.takeIf { it > 0 } ?: context.resources.displayMetrics.heightPixels
-        val menuW = min(dp(242), (hostW * 0.88f).toInt())
+        val menuW = min(dp(192), (hostW * 0.84f).toInt())
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(7), dp(8), dp(7))
-            elevation = dp(16).toFloat()
-            background = UiKit.gradientRounded(
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            elevation = dp(18).toFloat()
+            background = UiKit.strokeRounded(
                 context,
-                theme.panelColors,
-                Color.argb(110, 255, 255, 255),
-                14
+                Color.argb(246, 20, 23, 30),
+                Color.argb(38, 255, 255, 255),
+                8
             )
         }
 
         card.addView(
-            UiKit.label(context, title, 11.8f, theme.accent, bold = true).apply {
-                setPadding(dp(10), dp(3), dp(10), dp(5))
+            UiKit.label(context, title, 9.8f, UiKit.MUTED, bold = true).apply {
+                setPadding(dp(8), dp(3), dp(8), dp(4))
             }
         )
         card.addView(View(context).apply {
-            setBackgroundColor(Color.argb(40, 255, 255, 255))
-        }, LinearLayout.LayoutParams(-1, dp(1)).apply { bottomMargin = dp(4) })
+            setBackgroundColor(Color.argb(26, 255, 255, 255))
+        }, LinearLayout.LayoutParams(-1, 1).apply { bottomMargin = dp(2) })
 
         val itemsCol = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         for ((label, action) in items) {
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(10), dp(7), dp(10), dp(7))
-                background = UiKit.rounded(context, Color.argb(20, 255, 255, 255), 9)
-                UiKit.attachPressBounce(this, 0.97f)
+                setPadding(dp(8), dp(5), dp(8), dp(5))
+                background = UiKit.rounded(context, Color.argb(12, 255, 255, 255), 5)
+                UiKit.attachPressBounce(this, 0.98f)
                 setOnClickListener {
                     dismissOverlay()
                     action()
                 }
             }
-            row.addView(UiKit.label(context, label, 11.8f, UiKit.INK, bold = false))
-            itemsCol.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) })
+            row.addView(UiKit.label(context, label, 10.4f, UiKit.INK, bold = false))
+            itemsCol.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(1) })
         }
 
-        val estItemsH = dp(items.size * 35)
-        val maxScrollH = (hostH - dp(64)).coerceAtLeast(dp(90))
+        val estItemsH = dp(items.size * 26)
+        val maxScrollH = (hostH - dp(48)).coerceAtLeast(dp(80))
         if (estItemsH > maxScrollH) {
             val sc = ScrollView(context).apply { overScrollMode = View.OVER_SCROLL_NEVER }
             sc.addView(itemsCol)
@@ -174,26 +174,26 @@ class OverlayKit(
         val theme = prefs.currentTheme
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setPadding(dp(12), dp(11), dp(12), dp(11))
             elevation = dp(18).toFloat()
-            background = UiKit.gradientRounded(context, theme.panelColors, theme.accent, 16)
+            background = UiKit.strokeRounded(context, Color.argb(248, 17, 20, 27), Color.argb(48, 255, 255, 255), 8)
         }
 
-        card.addView(UiKit.label(context, title, 14f, UiKit.INK, bold = true))
+        card.addView(UiKit.label(context, title, 11.5f, UiKit.INK, bold = true))
 
         val input = EditText(context).apply {
             setText(initialText)
             hint = hintText
             setHintTextColor(UiKit.MUTED)
             setTextColor(UiKit.INK)
-            setTextSize(TypedValue.COMPLEX_UNIT_PX, UiKit.spPx(context, 13f))
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, UiKit.spPx(context, 10.6f))
             setSingleLine(true)
-            background = UiKit.strokeRounded(context, Color.rgb(10, 16, 28), Color.argb(80, 255, 255, 255), 10)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = UiKit.strokeRounded(context, Color.rgb(24, 28, 37), Color.argb(42, 255, 255, 255), 6)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
         }
-        card.addView(input, LinearLayout.LayoutParams(-1, dp(40)).apply {
-            topMargin = dp(10)
-            bottomMargin = dp(12)
+        card.addView(input, LinearLayout.LayoutParams(-1, dp(32)).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(10)
         })
 
         val actions = LinearLayout(context).apply {
@@ -202,21 +202,21 @@ class OverlayKit(
         }
         actions.addView(UiKit.chipButton(context, "Batal") {
             dismissOverlay()
-        }, LinearLayout.LayoutParams(-2, dp(32)).apply { rightMargin = dp(8) })
+        }, LinearLayout.LayoutParams(-2, dp(26)).apply { rightMargin = dp(6) })
 
         actions.addView(UiKit.chipButton(
             context,
             confirmLabel,
-            bgColor = Color.argb(180, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent)),
+            bgColor = Color.argb(165, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent)),
             strokeColor = theme.accent
         ) {
             val txt = input.text?.toString()?.trim().orEmpty()
             dismissOverlay()
             onConfirm(txt)
-        }, LinearLayout.LayoutParams(-2, dp(32)))
+        }, LinearLayout.LayoutParams(-2, dp(26)))
 
         card.addView(actions)
-        val w = min(dp(380), (context.resources.displayMetrics.widthPixels * 0.90f).toInt())
+        val w = min(dp(320), (context.resources.displayMetrics.widthPixels * 0.88f).toInt())
         showAnchoredPanel(card, widthPx = w, gravity = Gravity.CENTER)
         input.requestFocus()
     }
@@ -237,12 +237,12 @@ class OverlayKit(
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setPadding(dp(12), dp(11), dp(12), dp(11))
             elevation = dp(18).toFloat()
-            background = UiKit.gradientRounded(context, theme.panelColors, Color.argb(95, 255, 255, 255), 18)
+            background = UiKit.strokeRounded(context, Color.argb(248, 17, 20, 27), Color.argb(48, 255, 255, 255), 8)
         }
 
-        card.addView(UiKit.label(context, title, 14.5f, UiKit.INK, bold = true))
+        card.addView(UiKit.label(context, title, 11.6f, UiKit.INK, bold = true))
 
         var nameEdit: EditText? = null
         if (editableFolderName != null) {
@@ -363,27 +363,27 @@ class OverlayKit(
         val toastCard = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            elevation = dp(20).toFloat()
-            setPadding(dp(12), dp(10), dp(14), dp(10))
-            background = UiKit.gradientRounded(context, theme.panelColors, theme.accent, 13)
-            translationX = dp(260).toFloat()
+            elevation = dp(18).toFloat()
+            setPadding(dp(9), dp(7), dp(11), dp(7))
+            background = UiKit.strokeRounded(context, Color.argb(246, 17, 20, 27), Color.argb(50, 255, 255, 255), 7)
+            translationX = dp(220).toFloat()
             alpha = 0f
         }
 
         val icon = ImageView(context).apply {
-            setImageDrawable(VectorIcons.get(context, "start_orb", dp(26)))
+            setImageDrawable(VectorIcons.get(context, "start_orb", dp(18), theme.accent))
         }
-        toastCard.addView(icon, LinearLayout.LayoutParams(dp(26), dp(26)).apply { rightMargin = dp(10) })
+        toastCard.addView(icon, LinearLayout.LayoutParams(dp(18), dp(18)).apply { rightMargin = dp(8) })
 
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        col.addView(UiKit.label(context, title, 11.5f, UiKit.INK, bold = true))
-        col.addView(UiKit.label(context, message, 10.8f, UiKit.MUTED, maxLines = 2))
+        col.addView(UiKit.label(context, title, 10.0f, UiKit.INK, bold = true))
+        col.addView(UiKit.label(context, message, 9.0f, UiKit.MUTED, maxLines = 2))
         toastCard.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
 
-        val w = min(dp(300), (context.resources.displayMetrics.widthPixels * 0.85f).toInt())
+        val w = min(dp(250), (context.resources.displayMetrics.widthPixels * 0.80f).toInt())
         val lp = FrameLayout.LayoutParams(w, -2, Gravity.BOTTOM or Gravity.END).apply {
-            rightMargin = dp(14)
-            bottomMargin = dp(14)
+            rightMargin = dp(10)
+            bottomMargin = dp(10)
         }
         hostLayer.addView(toastCard, lp)
 

@@ -136,8 +136,8 @@ object ExplorerAndNotepad {
                             }
                         }
                         setOnLongClickListener {
-                            val menuList = mutableListOf(
-                                "Buka Item" to { performClick() },
+                            val menuList = mutableListOf<Pair<String, () -> Unit>>(
+                                "Buka Item" to { performClick(); Unit },
                                 "Salin (Copy)" to {
                                     clipboardFile = f
                                     host.showToast("Clipboard Explorer", "Disalin: ${f.name}")

@@ -32,14 +32,18 @@ const OBF_PKG: [u8; 18] = [
     0xf2, 0xce,
 ];
 
+#[inline(never)]
 fn deobf_bytes(src: &[u8]) -> Vec<u8> {
-    src.iter()
-        .enumerate()
-        .map(|(i, &b)| {
-            let mask = (0xA7usize.wrapping_add(i.wrapping_mul(31))) as u8;
-            b ^ mask
-        })
-        .collect()
+    let base = std::hint::black_box(0xA7usize);
+    let step = std::hint::black_box(31usize);
+    let slice = std::hint::black_box(src);
+    let mut out = Vec::with_capacity(slice.len());
+    for i in 0..slice.len() {
+        let b = unsafe { std::ptr::read_volatile(&slice[i]) };
+        let mask = (base.wrapping_add(i.wrapping_mul(step)) & 0xFF) as u8;
+        out.push(std::hint::black_box(b ^ mask));
+    }
+    out
 }
 
 const K256: [u32; 64] = [
